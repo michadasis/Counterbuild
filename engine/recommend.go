@@ -667,7 +667,7 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 	// What the player owns.
 	var owned []int
 	var myStats Stats
-	ownedGroups := map[string]bool{}
+	ownedGroups := map[string][]int{} // unique group -> owned items that have it
 	ownedSet := map[int]bool{}
 	support := strings.EqualFold(self.Position, "UTILITY")
 	if pos := strings.ToUpper(strings.TrimSpace(self.Position)); (pos == "" || pos == "NONE") && ch != nil && len(ch.Tags) > 0 && ch.Tags[0] == "Support" {
@@ -698,8 +698,11 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 			myMKeep *= 1 - it.Stats[StMagicPenPct]/100
 		}
 		ownedSet[it.ID] = true
+		if base, ok := c.Transforms[it.ID]; ok {
+			ownedSet[base] = true // owning Diadem of Songs means Whispering Circlet is done
+		}
 		for _, gname := range uniqueGroups(it) {
-			ownedGroups[gname] = true
+			ownedGroups[gname] = append(ownedGroups[gname], it.ID)
 		}
 		if it.Boots && it.ID != 1001 {
 			hasBoots = true
@@ -830,9 +833,12 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 		}
 		clash := false
 		for _, gname := range uniqueGroups(it) {
-			if ownedGroups[gname] {
-				clash = true
-				break
+			for _, o := range ownedGroups[gname] {
+				// A component the item is built from gets used up, so
+				// owning Tear doesn't block Manamune or Whispering Circlet.
+				if !c.buildsFrom(it, o) {
+					clash = true
+				}
 			}
 		}
 		if clash {

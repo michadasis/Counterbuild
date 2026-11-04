@@ -47,13 +47,14 @@ func TestOPGGTextBuildOrder(t *testing.T) {
 		}
 	}
 	near(6617, 1)    // Moonstone Renewer: first core item
-	near(3083, 2.38) // Warmog's: 2nd buyable core item, sometimes 4th
+	near(2526, 2)    // Whispering Circlet, listed as Diadem of Songs (what it turns into)
+	near(3083, 3.19) // Warmog's: 3rd core item, sometimes 4th
 	near(3065, 4.35) // Spirit Visage: 4th or 5th
 	near(3107, 4.66) // Redemption: 4th or 5th
 	near(3504, 5)    // Ardent Censer
 	for _, id := range []int{3070, 2530} {
 		if _, ok := ex.Slot[id]; ok {
-			t.Fatalf("%d holds no build slot (Tear is a component, Diadem of Songs can't be bought)", id)
+			t.Fatalf("%d holds no build slot (Tear is a component, Diadem of Songs is bought as Whispering Circlet)", id)
 		}
 	}
 	if ex.Pop[6617] < 0.99 || ex.Pop[3107] >= ex.Pop[3083] {

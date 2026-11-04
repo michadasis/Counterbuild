@@ -166,6 +166,10 @@ type Catalog struct {
 	Items     map[int]*Item
 	Champions map[string]*Champion // by Data Dragon id
 	byLower   map[string]*Champion // lowercased id and name
+
+	// Transforms maps items that can't be bought but grow out of one
+	// (Muramana, Seraph's Embrace, Diadem of Songs) to the item you buy.
+	Transforms map[int]int
 }
 
 var (
@@ -202,6 +206,7 @@ func LoadCatalog(itemJSON, champJSON []byte) (*Catalog, error) {
 	for _, it := range c.Items {
 		it.Feat = detectFeatures(it)
 	}
+	c.Transforms = findTransforms(c.Items)
 	for _, d := range chf.Data {
 		key, _ := strconv.Atoi(d.Key)
 		ch := &Champion{
@@ -294,6 +299,49 @@ func (c *Catalog) Champion(idOrName string) *Champion {
 		return ch
 	}
 	return c.byLower[strings.ToLower(idOrName)]
+}
+
+// findTransforms reads "transforms into X" from shop item descriptions.
+func findTransforms(items map[int]*Item) map[int]int {
+	out := map[int]int{}
+	for _, a := range items {
+		if !a.Purchasable || !strings.Contains(a.Text, "transform") {
+			continue
+		}
+		for _, b := range items {
+			if b.Purchasable || b.ID == a.ID || len(b.Name) < 4 {
+				continue
+			}
+			// Data Dragon repeats items for other modes under long ids
+			// (323003 is Arena's Archangel's Staff); prefer the standard one.
+			if prev, ok := out[b.ID]; strings.Contains(a.Text, "into "+strings.ToLower(b.Name)) && (!ok || a.ID < prev) {
+				out[b.ID] = a.ID
+			}
+		}
+	}
+	return out
+}
+
+// Buyable returns the shop item that gives id: id itself if it can be
+// bought, the item it grows out of if it is a transformation, else 0.
+func (c *Catalog) Buyable(id int) int {
+	if it := c.Items[id]; it != nil && it.Purchasable {
+		return id
+	}
+	return c.Transforms[id]
+}
+
+// buildsFrom reports whether id is somewhere in it's recipe.
+func (c *Catalog) buildsFrom(it *Item, id int) bool {
+	for _, f := range it.From {
+		if f == id {
+			return true
+		}
+		if sub := c.Items[f]; sub != nil && c.buildsFrom(sub, id) {
+			return true
+		}
+	}
+	return false
 }
 
 // Item returns the item or nil.

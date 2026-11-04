@@ -442,12 +442,13 @@ func TestCountersStillBeatMeta(t *testing.T) {
 }
 
 // sorakaARAM is what OP.GG's real ARAM answer for Soraka turns into (see
-// meta/testdata/opgg_soraka_aram.txt): Moonstone first, Warmog's in the core
-// build, Spirit Visage and Redemption as 4th/5th items.
+// meta/testdata/opgg_soraka_aram.txt): Moonstone, then Whispering Circlet
+// (listed as Diadem of Songs, which it turns into), then Warmog's; Spirit
+// Visage and Redemption as 4th/5th items.
 var sorakaARAM = &Meta{
-	Pop:    map[int]float64{3065: 0.65, 3083: 1, 3107: 0.65, 3158: 1, 3504: 0.38, 6617: 1},
-	WR:     map[int]float64{3065: 0.485, 3083: 0.504, 3107: 0.479, 3158: 0.51, 3504: 0.488, 6617: 0.517},
-	Slot:   map[int]float64{3065: 4.35, 3083: 2.38, 3107: 4.66, 3504: 5, 6617: 1},
+	Pop:    map[int]float64{2526: 1, 3065: 0.65, 3083: 1, 3107: 0.65, 3158: 1, 3504: 0.38, 6617: 1},
+	WR:     map[int]float64{2526: 0.525, 3065: 0.485, 3083: 0.504, 3107: 0.479, 3158: 0.51, 3504: 0.488, 6617: 0.517},
+	Slot:   map[int]float64{2526: 2, 3065: 4.35, 3083: 3.19, 3107: 4.66, 3504: 5, 6617: 1},
 	Source: "OP.GG",
 }
 
@@ -466,22 +467,29 @@ func sorakaGame(c *Catalog, items []int) *LiveGame {
 
 func TestMetaFollowsBuildOrder(t *testing.T) {
 	c := testCatalog(t)
-	// Moonstone done: the next OP.GG item is Warmog's, Redemption is a 4th/5th item.
+	// Moonstone done: the next OP.GG item is Whispering Circlet, then
+	// Warmog's; Redemption is a 4th/5th item.
 	r := c.Recommend(sorakaGame(c, []int{6617, 3158}), Options{Meta: sorakaARAM})
 	dump(t, "soraka after moonstone", r)
-	if len(r.Picks) == 0 || r.Picks[0].Name != "Warmog's Armor" {
-		t.Fatalf("expected Warmog's next, got %v", pickNames(r))
+	if len(r.Picks) == 0 || r.Picks[0].Name != "Whispering Circlet" {
+		t.Fatalf("expected Whispering Circlet next, got %v", pickNames(r))
 	}
-	if r.Picks[0].Reasons[0] != "OP.GG core (50% WR)" {
+	if r.Picks[0].Reasons[0] != "OP.GG core (53% WR)" {
 		t.Fatalf("expected the OP.GG reason first, got %v", r.Picks[0].Reasons)
+	}
+	// Circlet done (as Diadem of Songs): Warmog's next.
+	r = c.Recommend(sorakaGame(c, []int{6617, 2530, 3158}), Options{Meta: sorakaARAM})
+	dump(t, "soraka after diadem", r)
+	if r.Picks[0].Name != "Warmog's Armor" {
+		t.Fatalf("expected Warmog's after Diadem of Songs, got %v", pickNames(r))
 	}
 	for _, p := range r.Picks[:2] {
 		if p.Name == "Redemption" {
 			t.Fatalf("Redemption suggested too early: %v", pickNames(r))
 		}
 	}
-	// Three items in: now the 4th/5th item options come up.
-	r = c.Recommend(sorakaGame(c, []int{6617, 3083, 3222, 3158}), Options{Meta: sorakaARAM})
+	// The core build done: now the 4th/5th item options come up.
+	r = c.Recommend(sorakaGame(c, []int{6617, 2530, 3083, 3158}), Options{Meta: sorakaARAM})
 	dump(t, "soraka 4th item", r)
 	if !hasPick(r, "Redemption") || !hasPick(r, "Spirit Visage") {
 		t.Fatalf("expected Redemption and Spirit Visage as 4th item options, got %v", pickNames(r))
@@ -525,5 +533,37 @@ func TestCountersStillBeatBuildOrder(t *testing.T) {
 	}
 	if !hasPick(r, "Mortal Reminder") && (r.Counter == nil || r.Counter.Name != "Executioner's Calling") {
 		t.Fatalf("anti-heal lost to the build order: %v counter %+v", pickNames(r), r.Counter)
+	}
+}
+
+func TestTransforms(t *testing.T) {
+	c := testCatalog(t)
+	for transformed, base := range map[int]int{2530: 2526, 3040: 3003, 3042: 3004, 3121: 3119} {
+		if got := c.Buyable(transformed); got != base {
+			t.Fatalf("Buyable(%d %s) = %d, want %d", transformed, c.Items[transformed].Name, got, base)
+		}
+	}
+	if c.Buyable(3089) != 3089 || c.Buyable(3070) != 3070 {
+		t.Fatalf("shop items buy as themselves")
+	}
+	// Owning Diadem of Songs means Whispering Circlet is done.
+	r := c.Recommend(sorakaGame(c, []int{6617, 2530, 3158}), Options{Meta: sorakaARAM, MaxItems: 40})
+	if hasPick(r, "Whispering Circlet") {
+		t.Fatalf("Whispering Circlet suggested while owning Diadem of Songs")
+	}
+}
+
+func TestComponentDoesNotBlockItsItem(t *testing.T) {
+	c := testCatalog(t)
+	// Tear of the Goddess has the unique Manaflow passive, like the items built from it.
+	r := c.Recommend(sorakaGame(c, []int{6617, 3158, 3070}), Options{Meta: sorakaARAM})
+	dump(t, "soraka with tear", r)
+	if r.Picks[0].Name != "Whispering Circlet" {
+		t.Fatalf("owning Tear must not block Whispering Circlet, got %v", pickNames(r))
+	}
+	// But a finished Manaflow item still blocks another one.
+	r = c.Recommend(sorakaGame(c, []int{6617, 3158, 3004}), Options{Meta: sorakaARAM, MaxItems: 40})
+	if hasPick(r, "Whispering Circlet") {
+		t.Fatalf("Manamune and Whispering Circlet share Manaflow, got %v", pickNames(r))
 	}
 }

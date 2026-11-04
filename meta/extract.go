@@ -154,6 +154,15 @@ func (w *walker) walk(v any, group string) {
 	}
 }
 
+// buyable maps an item OP.GG lists to the one you buy for it (Diadem of
+// Songs -> Whispering Circlet), or leaves it as it is.
+func buyable(cat *engine.Catalog, id int) int {
+	if b := cat.Buyable(id); b != 0 {
+		return b
+	}
+	return id
+}
+
 // relevant items are the ones the engine scores: completed items and upgraded boots.
 func relevant(cat *engine.Catalog, id int) bool {
 	it := cat.Items[id]
@@ -211,6 +220,7 @@ func finish(cat *engine.Catalog, entries []*entry, how string) *extracted {
 				w = 1 / (1 + 0.5*float64(e.order))
 			}
 			for _, id := range e.ids {
+				id = buyable(cat, id)
 				if !relevant(cat, id) {
 					continue
 				}
@@ -385,8 +395,8 @@ func slotsFrom(cat *engine.Catalog, v any) map[int]float64 {
 		sum[id] += slot * w
 		wt[id] += w
 	}
-	// Items that can't be bought in the shop (Data Dragon marks some ARAM
-	// items that way) can't be suggested, so they don't hold a slot either.
+	// Items that can't be bought can't be suggested, so they don't hold a
+	// slot either; transformations count as the item they grow out of.
 	completed := func(id int) bool {
 		it := cat.Items[id]
 		return it != nil && it.Purchasable && !it.Boots && it.Cost >= 2000
@@ -396,8 +406,10 @@ func slotsFrom(cat *engine.Catalog, v any) map[int]float64 {
 		// later lists an item also shows up in.
 		w := 2 * max(entryPick(e), 0.3)
 		pos := 0
+		seen := map[int]bool{}
 		for _, id := range entryIDs(e) {
-			if completed(id) {
+			if id = buyable(cat, id); completed(id) && !seen[id] {
+				seen[id] = true
 				pos++
 				add(id, float64(pos), w)
 			}
@@ -410,7 +422,7 @@ func slotsFrom(cat *engine.Catalog, v any) map[int]float64 {
 				w = 0.05
 			}
 			for _, id := range entryIDs(e) {
-				if completed(id) {
+				if id = buyable(cat, id); completed(id) {
 					add(id, slot, w)
 				}
 			}
