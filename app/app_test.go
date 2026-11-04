@@ -121,3 +121,16 @@ func TestHistoryAffinity(t *testing.T) {
 		t.Fatalf("unexpected affinity %v", a)
 	}
 }
+
+func TestModeNameSkipsUnsupportedModes(t *testing.T) {
+	for _, m := range []string{"CHERRY", "TFT", "STRAWBERRY"} {
+		if got := modeName(m); got != "" {
+			t.Fatalf("modeName(%q) = %q, want no OP.GG lookup", m, got)
+		}
+	}
+	for m, want := range map[string]string{"CLASSIC": "ranked", "ARAM": "aram", "ARURF": "urf"} {
+		if got := modeName(m); got != want {
+			t.Fatalf("modeName(%q) = %q, want %q", m, got, want)
+		}
+	}
+}

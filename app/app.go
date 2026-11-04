@@ -163,14 +163,14 @@ func (a *App) Step() Frame {
 	var mb *engine.Meta
 	if self := g.Self(); self != nil {
 		champ = self.ChampID()
-		if cfg.MetaSource != "off" {
+		if mode := modeName(g.GameData.GameMode); cfg.MetaSource != "off" && mode != "" {
 			ch := cat.Champion(champ)
 			name := champ
 			if ch != nil {
 				name = ch.Name
 			}
 			req := meta.Request{ChampID: champ, ChampName: name, Position: rolePosition(self, ch, g.GameData.GameMode),
-				Mode: modeName(g.GameData.GameMode), Version: a.Data.Version()}
+				Mode: mode, Version: a.Data.Version()}
 			mb = a.Meta.Lookup(req, cat)
 		}
 	}
@@ -225,8 +225,12 @@ func rolePosition(self *engine.LivePlayer, ch *engine.Champion, mode string) str
 	return "top"
 }
 
+// modeName maps the game mode to a stats-site mode, or "" for modes the engine
+// doesn't support (Arena, Swarm, TFT), so no OP.GG lookup is made for them.
 func modeName(gameMode string) string {
 	switch strings.ToUpper(gameMode) {
+	case "CHERRY", "TFT", "STRAWBERRY":
+		return ""
 	case "ARAM":
 		return "aram"
 	case "URF", "ARURF":
