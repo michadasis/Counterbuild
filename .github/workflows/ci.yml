@@ -29,6 +29,9 @@ jobs:
           if [ -n "$files" ]; then echo "Run gofmt on:"; echo "$files"; exit 1; fi
       - run: go vet ./...
       - run: go test ./...
+      - name: Windows OCR tests (SKIP here means the runner has no OCR language)
+        if: runner.os == 'Windows'
+        run: go test -count=1 -v -run "TestWindowsOCR|TestRealMayhemCards" .
 
   release:
     name: Release
