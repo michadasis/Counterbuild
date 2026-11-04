@@ -15,6 +15,7 @@ import (
 type extracted struct {
 	Pop     map[int]float64
 	WR      map[int]float64
+	Slot    map[int]float64 // typical build slot (1 = first completed item)
 	Entries int
 	How     string
 }
@@ -320,9 +321,109 @@ func extractJSON(cat *engine.Catalog, b []byte) *extracted {
 	if err := dec.Decode(&v); err != nil {
 		return nil
 	}
+	return extractTree(cat, v, "json")
+}
+
+// extractTree reads item popularity and build slots from a decoded answer.
+func extractTree(cat *engine.Catalog, v any, how string) *extracted {
 	w := &walker{cat: cat, orders: map[string]int{}}
 	w.walk(v, "")
-	return finish(cat, w.entries, "json")
+	ex := finish(cat, w.entries, how)
+	ex.Slot = slotsFrom(cat, v)
+	return ex
+}
+
+// asList returns v as a list of build entries (one entry or a list of them).
+func asList(v any) []any {
+	switch x := v.(type) {
+	case []any:
+		return x
+	case map[string]any:
+		return []any{x}
+	}
+	return nil
+}
+
+func entryIDs(e any) []int {
+	m, _ := e.(map[string]any)
+	var ids []int
+	for _, k := range []string{"ids", "item_ids", "items"} {
+		arr, _ := m[k].([]any)
+		for _, x := range arr {
+			if f, ok := toFloat(x); ok {
+				ids = append(ids, int(f))
+			}
+		}
+		if len(ids) > 0 {
+			break
+		}
+	}
+	return ids
+}
+
+func entryPick(e any) float64 {
+	m, _ := e.(map[string]any)
+	for _, k := range []string{"pick_rate", "pickrate", "pick"} {
+		if f, ok := toFloat(m[k]); ok {
+			return rate(f)
+		}
+	}
+	return -1
+}
+
+// slotsFrom works out where each item is usually built, from the core build
+// order (item 1, 2, 3) and the 4th/5th/6th item lists, weighted by how often
+// each option is picked. Only completed items count; boots don't take a slot.
+func slotsFrom(cat *engine.Catalog, v any) map[int]float64 {
+	root, _ := v.(map[string]any)
+	data, _ := root["data"].(map[string]any)
+	if data == nil {
+		return nil
+	}
+	sum, wt := map[int]float64{}, map[int]float64{}
+	add := func(id int, slot, w float64) {
+		sum[id] += slot * w
+		wt[id] += w
+	}
+	// Items that can't be bought in the shop (Data Dragon marks some ARAM
+	// items that way) can't be suggested, so they don't hold a slot either.
+	completed := func(id int) bool {
+		it := cat.Items[id]
+		return it != nil && it.Purchasable && !it.Boots && it.Cost >= 2000
+	}
+	for _, e := range asList(data["core_items"]) {
+		// The core build order is the strongest signal, so it outweighs the
+		// later lists an item also shows up in.
+		w := 2 * max(entryPick(e), 0.3)
+		pos := 0
+		for _, id := range entryIDs(e) {
+			if completed(id) {
+				pos++
+				add(id, float64(pos), w)
+			}
+		}
+	}
+	for slot, key := range map[float64]string{4: "fourth_items", 5: "fifth_items", 6: "sixth_items"} {
+		for _, e := range asList(data[key]) {
+			w := entryPick(e)
+			if w <= 0 {
+				w = 0.05
+			}
+			for _, id := range entryIDs(e) {
+				if completed(id) {
+					add(id, slot, w)
+				}
+			}
+		}
+	}
+	if len(sum) == 0 {
+		return nil
+	}
+	out := make(map[int]float64, len(sum))
+	for id, s := range sum {
+		out[id] = s / wt[id]
+	}
+	return out
 }
 
 // toolResult is the MCP tools/call result shape.
@@ -359,6 +460,11 @@ func extractResult(cat *engine.Catalog, raw json.RawMessage) (*extracted, string
 	}
 	if ex := extractJSON(cat, []byte(strings.TrimSpace(text))); ex != nil && len(ex.Pop) > 0 {
 		return ex, text, false
+	}
+	if tree, ok := parseRepr(text); ok {
+		if ex := extractTree(cat, tree, "opgg text"); len(ex.Pop) > 0 {
+			return ex, text, false
+		}
 	}
 	return extractText(cat, text), text, false
 }

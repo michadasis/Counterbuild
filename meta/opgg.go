@@ -33,6 +33,7 @@ func (r Request) key() string {
 type cached struct {
 	Pop     map[int]float64 `json:"pop"`
 	WR      map[int]float64 `json:"wr"`
+	Slot    map[int]float64 `json:"slot,omitempty"`
 	How     string          `json:"how"`
 	Fetched time.Time       `json:"fetched"`
 }
@@ -92,7 +93,8 @@ func NewProvider(url, dir, appVersion string, logf func(string, ...any), onReady
 }
 
 func (p *Provider) cachePath(r Request) string {
-	return filepath.Join(p.dir, "opgg", r.Version, r.key()+".json")
+	// "_v2": builds cached before OP.GG's text form was parsed lack slots.
+	return filepath.Join(p.dir, "opgg", r.Version, r.key()+"_v2.json")
 }
 
 func (p *Provider) loadDisk(r Request) *cached {
@@ -142,7 +144,7 @@ func (p *Provider) Lookup(r Request, cat *engine.Catalog) *engine.Meta {
 	if c == nil || len(c.Pop) == 0 {
 		return nil
 	}
-	return &engine.Meta{Pop: c.Pop, WR: c.WR, Source: "OP.GG"}
+	return &engine.Meta{Pop: c.Pop, WR: c.WR, Slot: c.Slot, Source: "OP.GG"}
 }
 
 func (p *Provider) fetch(r Request, cat *engine.Catalog, k string) {
@@ -164,7 +166,7 @@ func (p *Provider) fetch(r Request, cat *engine.Catalog, k string) {
 		p.logf("OP.GG: %s %s %s failed: %v", r.ChampID, r.Position, r.Mode, err)
 		return
 	}
-	c := &cached{Pop: ex.Pop, WR: ex.WR, How: ex.How, Fetched: time.Now()}
+	c := &cached{Pop: ex.Pop, WR: ex.WR, Slot: ex.Slot, How: ex.How, Fetched: time.Now()}
 	if len(c.Pop) == 0 {
 		p.retryAt[k] = time.Now().Add(emptyRetry)
 		p.logf("OP.GG: %s %s %s: response had no item data I could read (saved to meta/opgg_last_response.txt)", r.ChampID, r.Position, r.Mode)

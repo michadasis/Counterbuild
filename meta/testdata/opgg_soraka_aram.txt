@@ -1,0 +1,8 @@
+class LolGetChampionAnalysis: data
+class Data: damage_type,core_items,mythic_items,boots,starter_items,last_items,fourth_items,fifth_items,sixth_items,skill_masteries,counters_meta
+class CoreItems: ids,ids_names,play,win,pick_rate
+class SkillMasteries: builds
+class Build: order,play,win,pick_rate
+class CountersMeta: message
+
+LolGetChampionAnalysis(Data("AP",CoreItems([3070,6617,2530,3083],["Tear of the Goddess","Moonstone Renewer","Diadem of Songs","Warmog's Armor"],7373,3796,0.18),[],CoreItems([3158],["Ionian Boots of Lucidity"],33953,17319,0.83),CoreItems([2003,2003,3070,4642],["Health Potion","Health Potion","Tear of the Goddess","Bandleglass Mirror"],22979,11881,0.45),[CoreItems([6617],["Moonstone Renewer"],40810,21127,0.77),CoreItems([3083],["Warmog's Armor"],33676,16742,0.64),CoreItems([2530],["Diadem of Songs"],26164,13849,0.49)],[CoreItems([3065],["Spirit Visage"],4994,2450,0.22),CoreItems([3083],["Warmog's Armor"],3250,1693,0.14),CoreItems([3107],["Redemption"],2426,1197,0.1)],[CoreItems([3107],["Redemption"],1489,701,0.19),CoreItems([3065],["Spirit Visage"],917,436,0.12),CoreItems([3504],["Ardent Censer"],881,430,0.11)],[],SkillMasteries([Build(["Q","W","E","W","W","R","W","Q","W","Q","R","Q","Q","E","E"],10534,5655,0.47),Build(["Q","W","E","Q","W","R","W","W","W","Q","R","Q","Q","E","E"],773,430,0.03),Build(["Q","W","E","W","W","R","W","Q","W","Q","R","E","Q","Q","E"],509,260,0.02),Build(["Q","W","E","W","W","R","W","E","W","Q","R","Q","Q","Q","E"],471,246,0.02),Build(["Q","W","E","W","W","R","W","Q","W","Q","R","Q","E","Q","E"],459,246,0.02)]),CountersMeta("Insufficient matchup sample. See data.summary.positions[].counters[] for raw matchup data (smaller sample).")))
