@@ -30,7 +30,7 @@ Every second it reads the official Live Client Data API that the game serves on 
 
 - Windows 10 or 11, 64-bit.
 - League set to **Borderless** (Settings, Video, Window Mode). No external overlay can draw over exclusive Fullscreen.
-- For augment ratings: the game client in English (OP.GG's augment names are English). Windows' built-in text recognition is used, nothing extra to install.
+- For augment ratings: the game client in English (OP.GG's augment names are English) and English in Windows' languages, which provides Windows' built-in text recognition (Settings, Time & language, Language & region; most PCs already have it). The log says so if it's missing.
 
 ## Run
 

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -173,7 +174,8 @@ type ocrResp struct {
 
 // ocrEngine runs all WinRT calls on one locked OS thread.
 type ocrEngine struct {
-	reqs chan ocrReq
+	reqs    chan ocrReq
+	english bool // false when Windows has no English text recognition
 }
 
 func startOCR() (*ocrEngine, error) {
@@ -189,7 +191,7 @@ func startOCR() (*ocrEngine, error) {
 				}
 			}()
 			pRoInitialize.Call(1) // multithreaded; "already initialized" is fine too
-			eng, fac, err = createOCR()
+			eng, fac, e.english, err = createOCR()
 			return err
 		}()
 		ready <- err
@@ -224,13 +226,13 @@ func (e *ocrEngine) read(pix []byte, w, h int) ([][]ocrWord, error) {
 
 // createOCR makes an English OCR engine when the English language pack is
 // installed (augment names are English), else one for the user's languages.
-func createOCR() (eng, bitmapFactory unsafe.Pointer, err error) {
+func createOCR() (eng, bitmapFactory unsafe.Pointer, english bool, err error) {
 	if err := pRoInitialize.Find(); err != nil {
-		return nil, nil, errors.New("Windows OCR needs Windows 10 or newer")
+		return nil, nil, false, errors.New("Windows OCR needs Windows 10 or newer")
 	}
 	statics, err := activationFactory("Windows.Media.Ocr.OcrEngine", &iidOcrEngineStatics)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	defer release(statics)
 	if lf, err := activationFactory("Windows.Globalization.Language", &iidLanguageFactory); err == nil {
@@ -246,6 +248,7 @@ func createOCR() (eng, bitmapFactory unsafe.Pointer, err error) {
 			}
 			pWindowsDeleteString.Call(h)
 			if eng != nil {
+				english = true
 				break
 			}
 		}
@@ -255,14 +258,14 @@ func createOCR() (eng, bitmapFactory unsafe.Pointer, err error) {
 		vcall(statics, slotOcrTryCreateFromUser, uintptr(unsafe.Pointer(&eng)))
 	}
 	if eng == nil {
-		return nil, nil, errors.New("no OCR language is installed in Windows")
+		return nil, nil, false, errors.New("no text recognition language is installed in Windows")
 	}
 	bitmapFactory, err = activationFactory("Windows.Graphics.Imaging.SoftwareBitmap", &iidSoftwareBitmapFactory)
 	if err != nil {
 		release(eng)
-		return nil, nil, err
+		return nil, nil, false, err
 	}
-	return eng, bitmapFactory, nil
+	return eng, bitmapFactory, english, nil
 }
 
 type planeDesc struct {
@@ -441,12 +444,14 @@ func maskOverlay(pix []byte, x, y, w, h int) {
 }
 
 // augmentReader reads the middle of the game window, where the augment cards
-// are, while the game is the foreground window.
-func augmentReader() (app.ScreenReader, error) {
-	eng, err := startOCR()
-	if err != nil {
-		return nil, err
-	}
+// are, while the game is the foreground window. The OCR engine starts on the
+// first read, so it costs nothing unless you play ARAM Mayhem.
+func augmentReader(logf func(string, ...any)) app.ScreenReader {
+	var (
+		once sync.Once
+		eng  *ocrEngine
+		err  error
+	)
 	return func() ([]app.OCRLine, error) {
 		game, area, ok := gameArea()
 		if !ok {
@@ -454,6 +459,15 @@ func augmentReader() (app.ScreenReader, error) {
 		}
 		if fg, _, _ := pGetForegroundWindow.Call(); fg != game {
 			return nil, nil
+		}
+		once.Do(func() {
+			if eng, err = startOCR(); err == nil && !eng.english {
+				logf("augment cards: Windows has no English text recognition, so card names may not be read. " +
+					"Add English in Settings, Time & language, Language & region.")
+			}
+		})
+		if err != nil {
+			return nil, err
 		}
 		aw, ah := int(area.right-area.left), int(area.bottom-area.top)
 		x, y := int(area.left)+aw*12/100, int(area.top)+ah*18/100
@@ -468,7 +482,7 @@ func augmentReader() (app.ScreenReader, error) {
 			return nil, err
 		}
 		return toLines(raw, w), nil
-	}, nil
+	}
 }
 
 // toLines converts OCR output to resolution-independent lines.

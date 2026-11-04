@@ -86,11 +86,7 @@ func main() {
 		windir = `C:\Windows`
 	}
 	a := app.New(cfg, dir, []string{filepath.Join(windir, "Fonts")}, logger)
-	if r, err := augmentReader(); err == nil {
-		a.SetScreenReader(r)
-	} else {
-		logger.Printf("augment cards can't be read: %v", err)
-	}
+	a.SetScreenReader(augmentReader(logger.Printf))
 	u := &ui{a: a, dir: dir, log: logger, stop: make(chan struct{}), lastScale: 1}
 	theUI = u
 	if err := u.create(); err != nil {
