@@ -88,8 +88,9 @@ func TestWindowsOCR(t *testing.T) {
 }
 
 // TestRealMayhemCards reads the titles of a real ARAM Mayhem augment choice
-// (cropped from a 1920x1080 game screenshot) and rates them. OP.GG had stats
-// for only one of the three on that champion.
+// (cropped from a 1920x1080 game screenshot) and rates them. OP.GG's list for
+// that champion had only Upgrade Zhonya's (tier 4); the other two are in its
+// top tiers, which the list leaves out.
 func TestRealMayhemCards(t *testing.T) {
 	eng, err := startOCR()
 	if err != nil {
@@ -118,13 +119,14 @@ func TestRealMayhemCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	names := map[int]string{1318: "Upgrade Zhonya's", 1037: "First-Aid Kit", 1205: "ADAPt", 2138: "Adaptive Ward", 1404: "Stats!"}
-	stats := []meta.Augment{{ID: 1318, Name: "Upgrade Zhonya's", Score: 82.46, Pop: 0.15}, {ID: 1404, Name: "Stats!", Score: 76, Pop: 0.1}}
+	stats := []meta.Augment{{ID: 1318, Name: "Upgrade Zhonya's", Tier: 4, Score: 82.46, Pop: 0.15}, {ID: 1404, Name: "Stats!", Tier: 4, Score: 76, Pop: 0.1}}
 	cards := app.RateCards(toLines(raw, w), meta.MergeAugments(stats, names))
 	t.Logf("%+v", cards)
 	if len(cards) != 3 || cards[0].Name != "Upgrade Zhonya's" || cards[1].Name != "First-Aid Kit" || cards[2].Name != "ADAPt" {
 		t.Fatalf("expected the three cards left to right, got %+v", cards)
 	}
-	if cards[0].NoData || cards[0].Verdict != "OK" || !cards[1].NoData || !cards[2].NoData {
-		t.Fatalf("only Upgrade Zhonya's has stats: %+v", cards)
+	// First-Aid Kit and ADAPt aren't in OP.GG's tier 3-5 list: they are in its top tiers.
+	if cards[0].Verdict != "Skip" || cards[1].Verdict != "Even" || cards[2].Verdict != "Even" || cards[1].Tier != 1 {
+		t.Fatalf("expected Skip, then two top-tier cards, got %+v", cards)
 	}
 }

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"math"
 	"sort"
 	"strings"
 	"unicode"
@@ -189,35 +190,83 @@ func offerFrom(found []cardMatch) []engine.AugmentCard {
 		return nil
 	}
 	cards := make([]engine.AugmentCard, len(found))
-	hi, lo, rated := 0.0, 0.0, 0
 	for i, f := range found {
-		c := engine.AugmentCard{Name: f.aug.Name, Score: f.aug.Score}
-		if f.aug.Score <= 0 {
+		c := engine.AugmentCard{Name: f.aug.Name, Tier: f.aug.Tier, Score: f.aug.Score}
+		switch {
+		case f.aug.Tier <= 0:
 			c.NoData, c.Verdict = true, "?"
-		} else {
+		case f.aug.Tier > 2:
 			c.FewGames = f.aug.Pop < 0.01
-			if rated == 0 {
-				hi, lo = c.Score, c.Score
-			}
-			hi, lo = max(hi, c.Score), min(lo, c.Score)
-			rated++
 		}
 		cards[i] = c
 	}
+	rateCards(cards)
+	return cards
+}
+
+// compareCards is 1 if a is the better pick, -1 if b is, 0 if it's too close
+// to call: a better OP.GG tier wins, and within a tier a score at least a
+// point higher.
+func compareCards(a, b engine.AugmentCard) int {
+	if a.Tier != b.Tier {
+		if a.Tier < b.Tier {
+			return 1
+		}
+		return -1
+	}
+	if a.Score > 0 && b.Score > 0 && math.Abs(a.Score-b.Score) >= 1 {
+		if a.Score > b.Score {
+			return 1
+		}
+		return -1
+	}
+	return 0
+}
+
+// rateCards marks the best card Take (or the tied best ones Even), the worst
+// one Skip when it is clearly worse (a worse tier, or 3+ points lower in the
+// same tier), and the rest OK. Cards without data keep "?".
+func rateCards(cards []engine.AugmentCard) {
+	var rated []int
 	for i := range cards {
-		switch {
-		case cards[i].NoData:
-		case rated < 2:
-			cards[i].Verdict = "OK"
-		case hi-lo < 1:
-			cards[i].Verdict = "Even"
-		case cards[i].Score == hi:
-			cards[i].Verdict = "Take"
-		case cards[i].Score == lo && hi-lo >= 3:
-			cards[i].Verdict = "Skip"
-		default:
-			cards[i].Verdict = "OK"
+		if !cards[i].NoData {
+			rated = append(rated, i)
 		}
 	}
-	return cards
+	if len(rated) < 2 {
+		for _, i := range rated {
+			cards[i].Verdict = "OK"
+		}
+		return
+	}
+	best, worst := rated[0], rated[0]
+	for _, i := range rated {
+		if compareCards(cards[i], cards[best]) > 0 {
+			best = i
+		}
+		if compareCards(cards[i], cards[worst]) < 0 {
+			worst = i
+		}
+	}
+	b := cards[best]
+	tied := 0
+	for _, i := range rated {
+		if compareCards(cards[i], b) == 0 {
+			tied++
+		}
+	}
+	for _, i := range rated {
+		c := &cards[i]
+		clearlyWorse := c.Tier > b.Tier || c.Score > 0 && b.Score > 0 && b.Score-c.Score >= 3
+		switch {
+		case compareCards(*c, b) == 0 && tied == 1:
+			c.Verdict = "Take"
+		case compareCards(*c, b) == 0:
+			c.Verdict = "Even"
+		case compareCards(*c, cards[worst]) == 0 && clearlyWorse:
+			c.Verdict = "Skip"
+		default:
+			c.Verdict = "OK"
+		}
+	}
 }

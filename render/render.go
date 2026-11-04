@@ -495,7 +495,7 @@ func (r *Renderer) Render(res *engine.Result, ic Icons, st Style) *image.RGBA {
 		c.fillRRect(pad, y, inner, 1, 0, color.NRGBA{200, 170, 110, 55})
 		y += 12
 		c.text("AUGMENT PICK", pad, y+9, wBold, 9, cDim, 1.2)
-		src := "OP.GG score"
+		src := "OP.GG tier"
 		c.text(src, panelW-pad-c.measure(src, wRegular, 9.5), y+9, wRegular, 9.5, cDim, 0)
 		y += 16
 		for _, a := range res.Augments {
@@ -508,12 +508,16 @@ func (r *Renderer) Render(res *engine.Result, ic Icons, st Style) *image.RGBA {
 				vc = cWarn
 			}
 			c.text(strings.ToUpper(a.Verdict), pad, y+13, wBold, 9.5, vc, 0.8)
-			score := fmt.Sprintf("%.1f", a.Score)
+			var score string
 			switch {
 			case a.NoData:
 				score = "no data"
+			case a.Tier <= 2:
+				score = "top tier"
 			case a.FewGames:
-				score = "few games  " + score
+				score = fmt.Sprintf("tier %d · few games", a.Tier)
+			default:
+				score = fmt.Sprintf("tier %d · %.1f", a.Tier, a.Score)
 			}
 			sw := c.measure(score, wSemi, 11)
 			c.text(score, panelW-pad-sw, y+13, wSemi, 11, cMuted, 0)

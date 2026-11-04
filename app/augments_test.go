@@ -1,18 +1,19 @@
 package app
 
 import (
+	"fmt"
 	"testing"
 
 	"counterbuild/meta"
 )
 
 var testAugs = []meta.Augment{
-	{ID: 1, Name: "Stats on Stats on Stats!", Score: 81.4, Pop: 0.15},
-	{ID: 2, Name: "Stats!", Score: 76.7, Pop: 0.13},
-	{ID: 3, Name: "King Me", Score: 58.6, Pop: 0.10},
-	{ID: 4, Name: "Hand of Baron", Score: 87.0, Pop: 0.10},
-	{ID: 5, Name: "Tooth Fairy", Score: 88.3, Pop: 0.005},
-	{ID: 6, Name: "", Score: 99, Pop: 0},
+	{ID: 1, Name: "Stats on Stats on Stats!", Tier: 4, Score: 81.4, Pop: 0.15},
+	{ID: 2, Name: "Stats!", Tier: 4, Score: 76.7, Pop: 0.13},
+	{ID: 3, Name: "King Me", Tier: 4, Score: 58.6, Pop: 0.10},
+	{ID: 4, Name: "Hand of Baron", Tier: 4, Score: 87.0, Pop: 0.10},
+	{ID: 5, Name: "Tooth Fairy", Tier: 5, Score: 88.3, Pop: 0.005},
+	{ID: 6, Name: "", Tier: 5, Score: 99, Pop: 0},
 }
 
 func words(x float64, s ...string) OCRLine {
@@ -95,5 +96,30 @@ func TestCardsWithoutStats(t *testing.T) {
 	cards = RateCards([]OCRLine{words(0.1, "First-Aid", "Kit"), words(0.7, "ADAPt")}, augs)
 	if len(cards) != 2 || !cards[0].NoData || !cards[1].NoData {
 		t.Fatalf("got %+v", cards)
+	}
+}
+
+func TestTierBeatsScore(t *testing.T) {
+	augs := []meta.Augment{
+		{ID: 1, Name: "First-Aid Kit", Tier: 1}, // missing from OP.GG's list: its top tiers
+		{ID: 2, Name: "Overloaded", Tier: 3, Score: 70},
+		{ID: 3, Name: "Tooth Fairy", Tier: 5, Score: 88.3, Pop: 0.005},
+		{ID: 4, Name: "ADAPt", Tier: 1},
+		{ID: 5, Name: "Upgrade Zhonya's", Tier: 4, Score: 82.5, Pop: 0.15},
+	}
+	verdicts := func(lines ...OCRLine) string {
+		var v []string
+		for _, c := range RateCards(lines, augs) {
+			v = append(v, c.Name+"="+c.Verdict)
+		}
+		return fmt.Sprint(v)
+	}
+	// A higher score in a worse tier doesn't win.
+	if got := verdicts(words(0.1, "First-Aid", "Kit"), words(0.4, "Overloaded"), words(0.7, "Tooth", "Fairy")); got != "[First-Aid Kit=Take Overloaded=OK Tooth Fairy=Skip]" {
+		t.Fatalf("got %v", got)
+	}
+	// The real offer from the Soraka game: two top-tier cards and a tier 4 one.
+	if got := verdicts(words(0.1, "Upgrade", "Zhonya's"), words(0.4, "First-Aid", "Kit"), words(0.7, "ADAPt")); got != "[Upgrade Zhonya's=Skip First-Aid Kit=Even ADAPt=Even]" {
+		t.Fatalf("got %v", got)
 	}
 }

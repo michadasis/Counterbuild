@@ -84,7 +84,8 @@ type Result struct {
 // AugmentCard is one augment offered on screen, rated against the others.
 type AugmentCard struct {
 	Name     string
-	Score    float64 // stats-site performance score, higher is better
+	Tier     int     // stats-site tier, 1 = best (also "top tiers", with no score)
+	Score    float64 // stats-site performance score, compared within a tier
 	Verdict  string  // "Take", "OK", "Skip", "Even", or "?" when there are no stats
 	NoData   bool    // the stats site has no data for it on this champion
 	FewGames bool    // too rarely picked for the score to mean much

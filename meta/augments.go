@@ -18,7 +18,7 @@ import (
 type Augment struct {
 	ID    int     `json:"id"`
 	Name  string  `json:"name"`
-	Tier  int     `json:"tier"`
+	Tier  int     `json:"tier"`  // OP.GG tier, 1 = best; see MergeAugments
 	Score float64 `json:"score"` // OP.GG performance score, higher is better
 	Pop   float64 `json:"pop"`   // how often it is picked, 0..1
 }
@@ -142,8 +142,13 @@ func parseAugmentNames(b []byte) (map[int]string, error) {
 }
 
 // MergeAugments combines the full name list with OP.GG's stats: every augment
-// gets a name (the game's own, which is what the cards show), and those OP.GG
-// has no stats for keep a zero Score.
+// gets a name (the game's own, which is what the cards show).
+//
+// OP.GG's augment tool only returns tiers 3 to 5 ("only tier 3 or higher"),
+// down to augments almost nobody picks, while its website lists the same
+// champion's tier 1 and 2 augments above them. So when OP.GG's data has
+// loaded, an augment missing from it is in OP.GG's top tiers: it gets Tier 1
+// and no score. Without OP.GG data, augments get Tier 0 (unknown).
 func MergeAugments(stats []Augment, names map[int]string) []Augment {
 	out := make([]Augment, 0, len(names)+len(stats))
 	seen := map[int]bool{}
@@ -159,7 +164,11 @@ func MergeAugments(stats []Augment, names map[int]string) []Augment {
 	}
 	for id, n := range names {
 		if !seen[id] {
-			out = append(out, Augment{ID: id, Name: n})
+			a := Augment{ID: id, Name: n}
+			if len(stats) > 0 {
+				a.Tier = 1
+			}
+			out = append(out, a)
 		}
 	}
 	return out

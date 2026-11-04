@@ -92,6 +92,14 @@ func TestParseAugmentNamesAndMerge(t *testing.T) {
 	if byID[1037].Score != 0 || byID[7777].Name != "Only On OPGG" {
 		t.Fatalf("unexpected merge: %+v", merged)
 	}
+	if byID[1037].Tier != 1 || byID[1250].Tier != 0 {
+		t.Fatalf("augments missing from OP.GG's list are in its top tiers: %+v", merged)
+	}
+	for _, a := range MergeAugments(nil, names) {
+		if a.Tier != 0 {
+			t.Fatalf("without OP.GG data nothing is known about tiers: %+v", a)
+		}
+	}
 }
 
 func TestFetchAugmentNames(t *testing.T) {
