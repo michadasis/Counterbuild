@@ -57,6 +57,11 @@ type Provider struct {
 
 	augMem  map[string]*augCache
 	augBusy bool
+
+	// NamesURL is where the full list of augment names comes from.
+	NamesURL  string
+	names     *namesCache
+	namesBusy bool
 }
 
 const (
@@ -81,6 +86,8 @@ func NewProvider(url, dir, appVersion string, logf func(string, ...any), onReady
 		mem:     map[string]*cached{},
 		retryAt: map[string]time.Time{},
 		augMem:  map[string]*augCache{},
+
+		NamesURL: DefaultNamesURL,
 	}
 }
 

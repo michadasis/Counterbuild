@@ -84,7 +84,8 @@ type Result struct {
 type AugmentCard struct {
 	Name     string
 	Score    float64 // stats-site performance score, higher is better
-	Verdict  string  // "Take", "OK", "Skip" or "Even"
+	Verdict  string  // "Take", "OK", "Skip", "Even", or "?" when there are no stats
+	NoData   bool    // the stats site has no data for it on this champion
 	FewGames bool    // too rarely picked for the score to mean much
 }
 

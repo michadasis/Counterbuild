@@ -27,7 +27,9 @@ var (
 	pWindowsDeleteString       = combase.NewProc("WindowsDeleteString")
 	pWindowsGetStringRawBuffer = combase.NewProc("WindowsGetStringRawBuffer")
 
-	pBitBlt = gdi32.NewProc("BitBlt")
+	pBitBlt          = gdi32.NewProc("BitBlt")
+	pGetWindowRect   = user32.NewProc("GetWindowRect")
+	pIsWindowVisible = user32.NewProc("IsWindowVisible")
 )
 
 type guid struct {
@@ -393,8 +395,8 @@ func vectorSize(v unsafe.Pointer) uint32 {
 	return n
 }
 
-// captureScreen copies a screen rectangle as BGRA. Layered windows (like the
-// overlay itself) are not included.
+// captureScreen copies a screen rectangle as BGRA. It can include the overlay
+// itself, see maskOverlay.
 func captureScreen(x, y, w, h int) ([]byte, error) {
 	d, err := newDIB(w, h)
 	if err != nil {
@@ -412,6 +414,30 @@ func captureScreen(x, y, w, h int) ([]byte, error) {
 		pix[i] = 255
 	}
 	return pix, nil
+}
+
+// maskOverlay blacks out our own panel in a capture of the screen rectangle
+// starting at (x, y), so its augment names are never read back as cards.
+func maskOverlay(pix []byte, x, y, w, h int) {
+	u := theUI
+	if u == nil || u.overlay == 0 {
+		return
+	}
+	if v, _, _ := pIsWindowVisible.Call(u.overlay); v == 0 {
+		return
+	}
+	var r rectT
+	if ok, _, _ := pGetWindowRect.Call(u.overlay, uintptr(unsafe.Pointer(&r))); ok == 0 {
+		return
+	}
+	x0, y0 := max(int(r.left)-x, 0), max(int(r.top)-y, 0)
+	x1, y1 := min(int(r.right)-x, w), min(int(r.bottom)-y, h)
+	for yy := y0; yy < y1; yy++ {
+		row := pix[yy*w*4 : (yy+1)*w*4]
+		for xx := x0; xx < x1; xx++ {
+			row[xx*4], row[xx*4+1], row[xx*4+2] = 0, 0, 0
+		}
+	}
 }
 
 // augmentReader reads the middle of the game window, where the augment cards
@@ -436,18 +462,24 @@ func augmentReader() (app.ScreenReader, error) {
 		if err != nil {
 			return nil, err
 		}
+		maskOverlay(pix, x, y, w, h)
 		raw, err := eng.read(pix, w, h)
 		if err != nil {
 			return nil, err
 		}
-		lines := make([]app.OCRLine, 0, len(raw))
-		for _, l := range raw {
-			var line app.OCRLine
-			for _, wd := range l {
-				line = append(line, app.OCRWord{Text: wd.text, X: float64(wd.x) / float64(w), W: float64(wd.w) / float64(w)})
-			}
-			lines = append(lines, line)
-		}
-		return lines, nil
+		return toLines(raw, w), nil
 	}, nil
+}
+
+// toLines converts OCR output to resolution-independent lines.
+func toLines(raw [][]ocrWord, w int) []app.OCRLine {
+	lines := make([]app.OCRLine, 0, len(raw))
+	for _, l := range raw {
+		var line app.OCRLine
+		for _, wd := range l {
+			line = append(line, app.OCRWord{Text: wd.text, X: float64(wd.x) / float64(w), W: float64(wd.w) / float64(w)})
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }

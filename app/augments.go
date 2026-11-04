@@ -167,6 +167,12 @@ func matchCards(lines []OCRLine, augs []meta.Augment) []cardMatch {
 	return out
 }
 
+// RateCards finds the augment cards in the recognized text and rates them, or
+// returns nil when the text doesn't show an augment choice.
+func RateCards(lines []OCRLine, augs []meta.Augment) []engine.AugmentCard {
+	return offerFrom(matchCards(lines, augs))
+}
+
 // offerFrom turns matches into the cards on screen, or nil when the text
 // doesn't look like an augment choice (fewer than two names spread across the
 // screen).
@@ -183,14 +189,26 @@ func offerFrom(found []cardMatch) []engine.AugmentCard {
 		return nil
 	}
 	cards := make([]engine.AugmentCard, len(found))
-	hi, lo := found[0].aug.Score, found[0].aug.Score
+	hi, lo, rated := 0.0, 0.0, 0
 	for i, f := range found {
-		cards[i] = engine.AugmentCard{Name: f.aug.Name, Score: f.aug.Score, FewGames: f.aug.Pop < 0.01}
-		hi = max(hi, f.aug.Score)
-		lo = min(lo, f.aug.Score)
+		c := engine.AugmentCard{Name: f.aug.Name, Score: f.aug.Score}
+		if f.aug.Score <= 0 {
+			c.NoData, c.Verdict = true, "?"
+		} else {
+			c.FewGames = f.aug.Pop < 0.01
+			if rated == 0 {
+				hi, lo = c.Score, c.Score
+			}
+			hi, lo = max(hi, c.Score), min(lo, c.Score)
+			rated++
+		}
+		cards[i] = c
 	}
 	for i := range cards {
 		switch {
+		case cards[i].NoData:
+		case rated < 2:
+			cards[i].Verdict = "OK"
 		case hi-lo < 1:
 			cards[i].Verdict = "Even"
 		case cards[i].Score == hi:

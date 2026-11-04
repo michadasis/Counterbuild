@@ -1,3 +1,4 @@
 Counterbuild.exe
 *.png
 !render/fonts/*
+!testdata/*.png

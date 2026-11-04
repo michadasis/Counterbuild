@@ -6,8 +6,12 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"image/png"
 	"os"
 	"testing"
+
+	"counterbuild/app"
+	"counterbuild/meta"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
@@ -80,5 +84,47 @@ func TestWindowsOCR(t *testing.T) {
 	// Second call reuses the engine.
 	if _, err := eng.read(pix, w, h); err != nil {
 		t.Fatalf("second read: %v", err)
+	}
+}
+
+// TestRealMayhemCards reads the titles of a real ARAM Mayhem augment choice
+// (cropped from a 1920x1080 game screenshot) and rates them. OP.GG had stats
+// for only one of the three on that champion.
+func TestRealMayhemCards(t *testing.T) {
+	eng, err := startOCR()
+	if err != nil {
+		t.Skipf("Windows OCR not available: %v", err)
+	}
+	f, err := os.Open("testdata/mayhem_cards.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	src, err := png.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Put the strip back at its place in a 1920-wide capture of the middle of the screen.
+	w, h := 1460, 200
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{10, 20, 25, 255}}, image.Point{}, draw.Src)
+	draw.Draw(img, src.Bounds().Add(image.Pt(430-230, 70)), src, image.Point{}, draw.Src)
+	pix := make([]byte, len(img.Pix))
+	for i := 0; i < len(pix); i += 4 {
+		pix[i], pix[i+1], pix[i+2], pix[i+3] = img.Pix[i+2], img.Pix[i+1], img.Pix[i], 255
+	}
+	raw, err := eng.read(pix, w, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[int]string{1318: "Upgrade Zhonya's", 1037: "First-Aid Kit", 1205: "ADAPt", 2138: "Adaptive Ward", 1404: "Stats!"}
+	stats := []meta.Augment{{ID: 1318, Name: "Upgrade Zhonya's", Score: 82.46, Pop: 0.15}, {ID: 1404, Name: "Stats!", Score: 76, Pop: 0.1}}
+	cards := app.RateCards(toLines(raw, w), meta.MergeAugments(stats, names))
+	t.Logf("%+v", cards)
+	if len(cards) != 3 || cards[0].Name != "Upgrade Zhonya's" || cards[1].Name != "First-Aid Kit" || cards[2].Name != "ADAPt" {
+		t.Fatalf("expected the three cards left to right, got %+v", cards)
+	}
+	if cards[0].NoData || cards[0].Verdict != "OK" || !cards[1].NoData || !cards[2].NoData {
+		t.Fatalf("only Upgrade Zhonya's has stats: %+v", cards)
 	}
 }

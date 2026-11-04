@@ -84,3 +84,16 @@ func TestAugmentMode(t *testing.T) {
 		}
 	}
 }
+
+func TestCardsWithoutStats(t *testing.T) {
+	augs := append([]meta.Augment{{ID: 7, Name: "First-Aid Kit"}, {ID: 8, Name: "ADAPt"}}, testAugs...)
+	cards := RateCards([]OCRLine{words(0.1, "King", "Me"), words(0.4, "First-Aid", "Kit"), words(0.7, "Hand", "of", "Baron")}, augs)
+	if len(cards) != 3 || !cards[1].NoData || cards[1].Verdict != "?" || cards[0].Verdict != "Skip" || cards[2].Verdict != "Take" {
+		t.Fatalf("got %+v", cards)
+	}
+	// Cards without stats are still recognized, so the choice is shown.
+	cards = RateCards([]OCRLine{words(0.1, "First-Aid", "Kit"), words(0.7, "ADAPt")}, augs)
+	if len(cards) != 2 || !cards[0].NoData || !cards[1].NoData {
+		t.Fatalf("got %+v", cards)
+	}
+}

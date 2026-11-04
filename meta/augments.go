@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,6 +26,143 @@ type Augment struct {
 type augCache struct {
 	Augs    []Augment `json:"augs"`
 	Fetched time.Time `json:"fetched"`
+}
+
+// DefaultNamesURL is CommunityDragon's copy of the game's augment list. It
+// names every augment, including the ones OP.GG has no stats or no name for.
+const DefaultNamesURL = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/cherry-augments.json"
+
+type namesCache struct {
+	Names   map[int]string `json:"names"`
+	Fetched time.Time      `json:"fetched"`
+}
+
+func (p *Provider) namesPath() string { return filepath.Join(p.dir, "augment_names.json") }
+
+// AugmentNames returns the names of all ARAM Mayhem augments by id (nil until
+// loaded), refreshing them in the background once a day.
+func (p *Provider) AugmentNames() map[int]string {
+	p.mu.Lock()
+	c := p.names
+	if c == nil {
+		if b, err := os.ReadFile(p.namesPath()); err == nil {
+			var d namesCache
+			if json.Unmarshal(b, &d) == nil && len(d.Names) > 0 {
+				c = &d
+				p.names = c
+			}
+		}
+	}
+	fresh := c != nil && time.Since(c.Fetched) < freshFor
+	start := !fresh && !p.namesBusy && time.Now().After(p.retryAt["names"])
+	if start {
+		p.namesBusy = true
+	}
+	p.mu.Unlock()
+	if start {
+		go p.fetchNames()
+	}
+	if c == nil {
+		return nil
+	}
+	return c.Names
+}
+
+func (p *Provider) fetchNames() {
+	defer func() {
+		if rec := recover(); rec != nil {
+			p.logf("augment names: fetch crashed: %v", rec)
+		}
+		p.mu.Lock()
+		p.namesBusy = false
+		p.mu.Unlock()
+	}()
+	names, err := p.downloadNames()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err != nil {
+		p.retryAt["names"] = time.Now().Add(retryAfter)
+		p.logf("augment names: %v", err)
+		return
+	}
+	c := &namesCache{Names: names, Fetched: time.Now()}
+	p.names = c
+	_ = os.MkdirAll(p.dir, 0o755)
+	if b, err := json.Marshal(c); err == nil {
+		_ = os.WriteFile(p.namesPath()+".tmp", b, 0o644)
+		_ = os.Rename(p.namesPath()+".tmp", p.namesPath())
+	}
+	p.logf("augment names: %d ARAM Mayhem augments", len(names))
+	if p.onReady != nil {
+		go p.onReady()
+	}
+}
+
+func (p *Provider) downloadNames() (map[int]string, error) {
+	req, err := http.NewRequest(http.MethodGet, p.NamesURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", p.agent)
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, p.NamesURL)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return nil, err
+	}
+	return parseAugmentNames(b)
+}
+
+// parseAugmentNames reads cherry-augments.json. Arena augments have ids below
+// 1000; ARAM Mayhem ones are 1000 and up, the same ids OP.GG uses.
+func parseAugmentNames(b []byte) (map[int]string, error) {
+	var list []struct {
+		ID   int    `json:"id"`
+		Name string `json:"nameTRA"`
+	}
+	if err := json.Unmarshal(b, &list); err != nil {
+		return nil, err
+	}
+	names := map[int]string{}
+	for _, a := range list {
+		if a.ID >= 1000 && strings.TrimSpace(a.Name) != "" {
+			names[a.ID] = strings.TrimSpace(a.Name)
+		}
+	}
+	if len(names) == 0 {
+		return nil, errors.New("no ARAM Mayhem augments in the list")
+	}
+	return names, nil
+}
+
+// MergeAugments combines the full name list with OP.GG's stats: every augment
+// gets a name (the game's own, which is what the cards show), and those OP.GG
+// has no stats for keep a zero Score.
+func MergeAugments(stats []Augment, names map[int]string) []Augment {
+	out := make([]Augment, 0, len(names)+len(stats))
+	seen := map[int]bool{}
+	for _, a := range stats {
+		if n := names[a.ID]; n != "" {
+			a.Name = n
+		}
+		if a.Name == "" {
+			continue
+		}
+		seen[a.ID] = true
+		out = append(out, a)
+	}
+	for id, n := range names {
+		if !seen[id] {
+			out = append(out, Augment{ID: id, Name: n})
+		}
+	}
+	return out
 }
 
 const augTool = "lol_list_aram_augments"

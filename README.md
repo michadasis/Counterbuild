@@ -54,7 +54,7 @@ The panel is click-through and never takes focus, so it cannot get in the way of
 - **Boots**: shown when you have no upgraded boots yet.
 - **Buy now / Next component**: what to buy at your next back.
 - **Anti-heal now / Cleanse now**: a cheap counter when the enemy team calls for it.
-- **Augment pick** (ARAM Mayhem): the augment cards on screen, left to right. *Take* is the one with the best OP.GG score for your champion, *Skip* is clearly the worst, *OK* is in between, *Even* means the scores are too close to call. *Few games* means OP.GG has little data on that augment, so treat its score with care. The section disappears a couple of seconds after you pick.
+- **Augment pick** (ARAM Mayhem): the augment cards on screen, left to right. *Take* is the one with the best OP.GG score for your champion, *Skip* is clearly the worst, *OK* is in between, *Even* means the scores are too close to call. *?* with *no data* means OP.GG has no stats for that augment on your champion. *Few games* means OP.GG has little data on that augment, so treat its score with care. The section disappears a couple of seconds after you pick.
 
 ## Settings
 
@@ -86,7 +86,7 @@ Example `core`:
 
 ## Is it allowed?
 
-Counterbuild uses Riot's local Live Client Data API, which exists for third-party tools, Riot's public Data Dragon files, and OP.GG's public stats endpoint. In ARAM Mayhem it also takes a screenshot of the middle of the game window about once a second and reads the augment card titles with Windows' built-in text recognition; the screenshots stay in memory and are never saved or sent anywhere. It does not read game memory, inject anything, press keys, pick augments, or buy items for you. It shows no timers and no information you cannot see in game. It is an ordinary always-on-top window, the same approach other desktop overlays use. Riot's third-party rules prohibit automating decisions and tracking things like enemy ultimate timers; build suggestions are not in that category.
+Counterbuild uses Riot's local Live Client Data API, which exists for third-party tools, Riot's public Data Dragon files, OP.GG's public stats endpoint, and CommunityDragon's copy of the game's augment list (to recognize every augment card by name). In ARAM Mayhem it also takes a screenshot of the middle of the game window about once a second and reads the augment card titles with Windows' built-in text recognition; the screenshots stay in memory and are never saved or sent anywhere. It does not read game memory, inject anything, press keys, pick augments, or buy items for you. It shows no timers and no information you cannot see in game. It is an ordinary always-on-top window, the same approach other desktop overlays use. Riot's third-party rules prohibit automating decisions and tracking things like enemy ultimate timers; build suggestions are not in that category.
 
 Riot has restricted showing augment statistics during the augment choice in some modes (for example in TFT). Check Riot's current third-party policies if that matters to you, and set `augments` to `off` (or untick *Rate augment cards* in the tray menu) to switch the screen reading off completely.
 
@@ -110,7 +110,7 @@ Everything lives in `%LOCALAPPDATA%\Counterbuild\`:
 - `history.json` items you built per champion
 - `counterbuild.log` errors, if any
 - `ddragon\` cached patch data and icons
-- `meta\` cached OP.GG builds and augment scores; `opgg_last_response.txt`, `opgg_augments_last_response.txt` and `opgg_tools.json` help debug if no OP.GG data shows up
+- `meta\` cached OP.GG builds and augment scores, and `augment_names.json`; `opgg_last_response.txt`, `opgg_augments_last_response.txt` and `opgg_tools.json` help debug if no OP.GG data shows up
 
 To uninstall: turn off *Start with Windows* in the tray menu, exit, then delete the `.exe` and that folder.
 

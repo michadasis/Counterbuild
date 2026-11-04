@@ -509,7 +509,10 @@ func (r *Renderer) Render(res *engine.Result, ic Icons, st Style) *image.RGBA {
 			}
 			c.text(strings.ToUpper(a.Verdict), pad, y+13, wBold, 9.5, vc, 0.8)
 			score := fmt.Sprintf("%.1f", a.Score)
-			if a.FewGames {
+			switch {
+			case a.NoData:
+				score = "no data"
+			case a.FewGames:
 				score = "few games  " + score
 			}
 			sw := c.measure(score, wSemi, 11)

@@ -1,6 +1,7 @@
 package meta
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -68,5 +69,54 @@ func TestFetchAugments(t *testing.T) {
 	p2 := NewProvider("http://127.0.0.1:1", dir, "test", nil, nil)
 	if got := p2.Augments(81, "16.21.1"); len(got) != 6 {
 		t.Fatalf("disk cache not used: %+v", got)
+	}
+}
+
+func TestParseAugmentNamesAndMerge(t *testing.T) {
+	names, err := parseAugmentNames([]byte(`[{"id":205,"nameTRA":"ADAPt"},{"id":1205,"nameTRA":"ADAPt"},{"id":1037,"nameTRA":"First-Aid Kit"},{"id":1250,"nameTRA":"Slow And Steady"},{"id":1999,"nameTRA":""}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) != 3 || names[1205] != "ADAPt" || names[205] != "" {
+		t.Fatalf("Arena augments and empty names must be dropped: %v", names)
+	}
+	stats := []Augment{{ID: 1250, Name: "", Score: 74.7}, {ID: 7777, Name: "Only On OPGG", Score: 70}, {ID: 8888, Name: ""}}
+	merged := MergeAugments(stats, names)
+	byID := map[int]Augment{}
+	for _, a := range merged {
+		byID[a.ID] = a
+	}
+	if len(merged) != 4 || byID[1250].Name != "Slow And Steady" || byID[1250].Score != 74.7 {
+		t.Fatalf("nameless OP.GG entry should get its name: %+v", merged)
+	}
+	if byID[1037].Score != 0 || byID[7777].Name != "Only On OPGG" {
+		t.Fatalf("unexpected merge: %+v", merged)
+	}
+}
+
+func TestFetchAugmentNames(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"id":1037,"nameTRA":"First-Aid Kit"},{"id":1205,"nameTRA":"ADAPt"}]`))
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	ready := make(chan struct{}, 1)
+	p := NewProvider("http://127.0.0.1:1", dir, "test", nil, func() { ready <- struct{}{} })
+	p.NamesURL = srv.URL
+	if p.AugmentNames() != nil {
+		t.Fatalf("expected nothing before the first fetch")
+	}
+	select {
+	case <-ready:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("fetch did not finish")
+	}
+	if n := p.AugmentNames(); n[1037] != "First-Aid Kit" || len(n) != 2 {
+		t.Fatalf("got %v", n)
+	}
+	p2 := NewProvider("http://127.0.0.1:1", dir, "test", nil, nil)
+	p2.NamesURL = "http://127.0.0.1:1"
+	if n := p2.AugmentNames(); len(n) != 2 {
+		t.Fatalf("disk cache not used: %v", n)
 	}
 }

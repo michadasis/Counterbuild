@@ -201,7 +201,7 @@ func (a *App) Step() Frame {
 		return Frame{Img: a.R.Status(res.Note, style), Show: true, InGame: true}
 	}
 	if ch != nil && cfg.MetaSource != "off" && augmentMode(cfg.Augments, g.GameData.GameMode, g.GameData.MapNumber) {
-		res.Augments = a.augmentOffer(a.Meta.Augments(ch.Key, a.Data.Version()))
+		res.Augments = a.augmentOffer(meta.MergeAugments(a.Meta.Augments(ch.Key, a.Data.Version()), a.Meta.AugmentNames()))
 	}
 	key := fmt.Sprintf("%s|%d", res.ChampID, start.Unix()/30)
 	a.Hist.Observe(key, res.ChampID, res.Completed)
@@ -279,7 +279,7 @@ func (a *App) augmentOffer(augs []meta.Augment) []engine.AugmentCard {
 	}
 	if a.linesNew {
 		a.linesNew = false
-		if cards := offerFrom(matchCards(a.lines, augs)); cards != nil {
+		if cards := RateCards(a.lines, augs); cards != nil {
 			a.offer, a.offerAt = cards, time.Now()
 		}
 	}
