@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func setupData(t *testing.T, dir string) {
@@ -147,5 +148,16 @@ func TestHistoryKey(t *testing.T) {
 	h.Observe("g1", historyKey("Soraka", "aram"), []int{3083})
 	if len(h.Affinity(historyKey("Soraka", "ranked"))) != 0 {
 		t.Fatalf("an ARAM build must not count on the Rift")
+	}
+}
+
+func TestScanInterval(t *testing.T) {
+	a := &App{}
+	if a.scanInterval() != scanIdle {
+		t.Fatalf("without cards on screen, read every %v", scanIdle)
+	}
+	a.offerAt = time.Now()
+	if a.scanInterval() != scanOffer {
+		t.Fatalf("while cards are showing, read every %v", scanOffer)
 	}
 }

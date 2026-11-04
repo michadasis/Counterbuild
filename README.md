@@ -5,7 +5,7 @@
 A tiny click-through overlay for League of Legends that reads your live game and tells you what to build next against the enemy team you are actually facing.
 
 - One 7 MB `.exe`. No installer, no Overwolf, no Electron, no runtime to install.
-- About 20 to 30 MB of RAM and well under 1% CPU (one poll and a redraw of a few milliseconds per second).
+- About 20 to 30 MB of RAM and well under 1% CPU (one poll and a redraw of a few milliseconds per second). In ARAM Mayhem, reading the augment cards adds about 80 ms of work every 2 seconds, a few percent of one CPU core.
 - Updates itself to the current patch from Riot's Data Dragon.
 - Starts from what players actually build on your champion and role (OP.GG stats), then adapts it to your game.
 
