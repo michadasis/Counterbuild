@@ -134,3 +134,18 @@ func TestModeNameSkipsUnsupportedModes(t *testing.T) {
 		}
 	}
 }
+
+func TestHistoryKey(t *testing.T) {
+	for _, c := range []struct{ mode, want string }{
+		{"ranked", "Soraka"}, {"", "Soraka"}, {"aram", "Soraka@aram"}, {"urf", "Soraka@urf"},
+	} {
+		if got := historyKey("Soraka", c.mode); got != c.want {
+			t.Fatalf("historyKey(Soraka, %q) = %q, want %q", c.mode, got, c.want)
+		}
+	}
+	h := LoadHistory(filepath.Join(t.TempDir(), "history.json"))
+	h.Observe("g1", historyKey("Soraka", "aram"), []int{3083})
+	if len(h.Affinity(historyKey("Soraka", "ranked"))) != 0 {
+		t.Fatalf("an ARAM build must not count on the Rift")
+	}
+}

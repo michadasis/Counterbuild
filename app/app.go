@@ -177,12 +177,13 @@ func (a *App) Step() Frame {
 	a.gameStart = start
 
 	champ := ""
+	mode := modeName(g.GameData.GameMode, g.GameData.MapNumber)
 	var mb *engine.Meta
 	var ch *engine.Champion
 	if self := g.Self(); self != nil {
 		champ = self.ChampID()
 		ch = cat.Champion(champ)
-		if mode := modeName(g.GameData.GameMode, g.GameData.MapNumber); cfg.MetaSource != "off" && mode != "" {
+		if cfg.MetaSource != "off" && mode != "" {
 			name := champ
 			if ch != nil {
 				name = ch.Name
@@ -192,7 +193,7 @@ func (a *App) Step() Frame {
 			mb = a.Meta.Lookup(req, cat)
 		}
 	}
-	opts := engine.Options{MaxItems: cfg.MaxItems, Affinity: a.Hist.Affinity(champ), Core: resolveCore(cat, cfg.Core, champ), Meta: mb}
+	opts := engine.Options{MaxItems: cfg.MaxItems, Affinity: a.Hist.Affinity(historyKey(champ, mode)), Core: resolveCore(cat, cfg.Core, champ), Meta: mb}
 	res := cat.Recommend(g, opts)
 	if !res.Supported {
 		if res.Note == "" {
@@ -204,12 +205,23 @@ func (a *App) Step() Frame {
 		res.Augments = a.augmentOffer(meta.MergeAugments(a.Meta.Augments(ch.Key, a.Data.Version()), a.Meta.AugmentNames()))
 	}
 	key := fmt.Sprintf("%s|%d", res.ChampID, start.Unix()/30)
-	a.Hist.Observe(key, res.ChampID, res.Completed)
+	a.Hist.Observe(key, historyKey(res.ChampID, mode), res.Completed)
 	if time.Since(a.lastSave) > 30*time.Second {
 		a.Hist.Save()
 		a.lastSave = time.Now()
 	}
 	return Frame{Img: a.R.Render(res, a.Data, style), Show: true, InGame: true}
+}
+
+// historyKey keeps what you build in each kind of game apart: Summoner's
+// Rift builds stay under the champion's name, ARAM (and Mayhem) and URF ones
+// go under "Soraka@aram" and "Soraka@urf", so Warmog's on ARAM Soraka doesn't
+// become "your usual build" on the Rift.
+func historyKey(champ, mode string) string {
+	if mode == "" || mode == "ranked" {
+		return champ
+	}
+	return champ + "@" + mode
 }
 
 // rolePosition maps the game's lane assignment to a stats-site role, guessing

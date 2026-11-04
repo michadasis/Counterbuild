@@ -23,7 +23,7 @@ Every second it reads the official Live Client Data API that the game serves on 
    - counter effects (anti-heal, anti-shield, anti-crit, stasis, spell shield, lifeline, cleanse, max-health damage, shred) count only as much as the enemy team needs them
 4. **Shows the top 3 items with the reason for each**, a boots pick if you have none, and **exactly what to buy with the gold you have right now** (the most expensive useful component toward your next item, using what you already own).
 5. **Flags urgent cheap counters**, for example Executioner's Calling or Oblivion Orb against heavy healing, Quicksilver Sash against suppression.
-6. **Learns your builds**: it remembers which items you finish on each champion and leans toward them over time. You can also pin a core build per champion (see Settings).
+6. **Learns your builds**: it remembers which items you finish on each champion, separately for Summoner's Rift, ARAM and URF, and leans toward them over time. You can also pin a core build per champion (see Settings).
 7. **Rates ARAM Mayhem augment cards**: while the augment choice is on screen it reads the card titles and marks which to take and which to skip, using OP.GG's augment tiers for your champion.
 
 ## Requirements
@@ -107,7 +107,7 @@ If OP.GG data is unavailable, first and core items come from your champion's cla
 Everything lives in `%LOCALAPPDATA%\Counterbuild\`:
 
 - `config.json` settings
-- `history.json` items you built per champion
+- `history.json` items you built per champion and kind of game
 - `counterbuild.log` errors, if any
 - `ddragon\` cached patch data and icons
 - `meta\` cached OP.GG builds and augment scores, and `augment_names.json`; `opgg_last_response.txt`, `opgg_augments_last_response.txt` and `opgg_tools.json` help debug if no OP.GG data shows up
