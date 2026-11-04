@@ -94,7 +94,7 @@ It is a personal tool, not registered with or endorsed by Riot or OP.GG. Use it 
 
 ### What it sends to OP.GG
 
-Only your champion, role and game mode (for example "Ahri, mid, ranked"), once per champion and role per day, plus in ARAM Mayhem your champion's id to get its augment scores, once per champion per day; the answers are cached. Nothing from the screen is sent. Nothing about your account, name or match. OP.GG made that endpoint for AI assistants rather than as a documented app API and publishes no terms for it either way, so if they change or close it, the overlay keeps working with its built-in logic. Set `metaSource` to `off` to never contact OP.GG.
+Only your champion, role and game mode (for example "Ahri, mid, ranked"), once per champion and role per day, plus in ARAM Mayhem your champion's id to get its augment tiers, once per champion per day; the answers are cached. Nothing from the screen is sent. Nothing about your account, name or match. OP.GG made that endpoint for AI assistants rather than as a documented app API and publishes no terms for it either way, so if they change or close it, the overlay keeps working with its built-in logic. Set `metaSource` to `off` to never contact OP.GG.
 
 ## How it decides, and its limits
 
@@ -139,7 +139,7 @@ go run . -out preview.png
 | `engine/` | Game parsing, enemy profiling, item scoring, buy planning (pure Go, no OS code) |
 | `render/` | Draws the panel into an image with per-pixel alpha |
 | `app/` | Polling, patch data and icon cache, settings, build history |
-| `meta/` | OP.GG most-built data: a small MCP client, response parsing and a daily cache |
+| `meta/` | OP.GG builds and augment tiers (a small MCP client, response parsing, daily cache) and the augment name list |
 | `main_windows.go`, `win32_windows.go` | Layered window, tray icon, hotkey |
 | `ocr_windows.go` | Screen capture and Windows OCR (WinRT) for the augment cards |
 | `main_other.go` | Preview tool for non-Windows systems |
