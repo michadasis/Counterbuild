@@ -147,6 +147,10 @@ go run . -out preview.png
 | `third_party/` | `golang.org/x/image` v0.31.0 and `golang.org/x/text` v0.29.0 subsets (BSD license) |
 | `render/fonts/` | Go fonts used when Segoe UI is missing (BSD license) |
 
+## License
+
+MIT, see [LICENSE](LICENSE). The code under `third_party/` (`golang.org/x/image` and `golang.org/x/text`) and the Go fonts in `render/fonts/` keep their own BSD licenses, included next to them.
+
 ## Legal
 
 Counterbuild isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, League of Legends and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
