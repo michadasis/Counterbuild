@@ -1,5 +1,7 @@
 # Counterbuild
 
+[![CI](https://github.com/michadasis/Counterbuild/actions/workflows/ci.yml/badge.svg)](https://github.com/michadasis/Counterbuild/actions/workflows/ci.yml)
+
 A tiny click-through overlay for League of Legends that reads your live game and tells you what to build next against the enemy team you are actually facing.
 
 - One 7 MB `.exe`. No installer, no Overwolf, no Electron, no runtime to install.
@@ -32,7 +34,7 @@ Every second it reads the official Live Client Data API that the game serves on 
 
 ## Run
 
-1. Unzip and run `Counterbuild.exe`. Windows SmartScreen may warn because the file is not code-signed: choose *More info*, then *Run anyway*. You can also build it yourself (see below).
+1. Download `Counterbuild.exe` from the [latest release](https://github.com/michadasis/Counterbuild/releases/latest) and run it. Windows SmartScreen may warn because the file is not code-signed: choose *More info*, then *Run anyway*. You can also build it yourself (see below).
 2. A tray icon appears. Start a game and the panel appears on the right side of the screen.
 
 | Action | How |
