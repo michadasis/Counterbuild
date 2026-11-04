@@ -22,11 +22,13 @@ Every second it reads the official Live Client Data API that the game serves on 
 4. **Shows the top 3 items with the reason for each**, a boots pick if you have none, and **exactly what to buy with the gold you have right now** (the most expensive useful component toward your next item, using what you already own).
 5. **Flags urgent cheap counters**, for example Executioner's Calling or Oblivion Orb against heavy healing, Quicksilver Sash against suppression.
 6. **Learns your builds**: it remembers which items you finish on each champion and leans toward them over time. You can also pin a core build per champion (see Settings).
+7. **Rates ARAM Mayhem augment cards**: while the augment choice is on screen it reads the card titles and marks which to take and which to skip, using OP.GG's augment scores for your champion.
 
 ## Requirements
 
 - Windows 10 or 11, 64-bit.
 - League set to **Borderless** (Settings, Video, Window Mode). No external overlay can draw over exclusive Fullscreen.
+- For augment ratings: the game client in English (OP.GG's augment names are English). Windows' built-in text recognition is used, nothing extra to install.
 
 ## Run
 
@@ -50,6 +52,7 @@ The panel is click-through and never takes focus, so it cannot get in the way of
 - **Boots**: shown when you have no upgraded boots yet.
 - **Buy now / Next component**: what to buy at your next back.
 - **Anti-heal now / Cleanse now**: a cheap counter when the enemy team calls for it.
+- **Augment pick** (ARAM Mayhem): the augment cards on screen, left to right. *Take* is the one with the best OP.GG score for your champion, *Skip* is clearly the worst, *OK* is in between, *Even* means the scores are too close to call. *Few games* means OP.GG has little data on that augment, so treat its score with care. The section disappears a couple of seconds after you pick.
 
 ## Settings
 
@@ -68,6 +71,7 @@ The panel is click-through and never takes focus, so it cannot get in the way of
 | `core` | `{}` | Items you always want on a champion, ranked first until you own them |
 | `metaSource` | `opgg` | Where most-built data comes from: `opgg`, or `off` to use only the built-in logic |
 | `metaUrl` | `https://mcp-api.op.gg/mcp` | OP.GG endpoint |
+| `augments` | `auto` | Rate augment cards: `auto` in ARAM Mayhem, `always` on any Howling Abyss game, `off` to never read the screen. Also in the tray menu |
 
 Example `core`:
 
@@ -80,13 +84,15 @@ Example `core`:
 
 ## Is it allowed?
 
-Counterbuild only uses Riot's local Live Client Data API, which exists for third-party tools, Riot's public Data Dragon files, and OP.GG's public stats endpoint. It does not read game memory, inject anything, press keys, or buy items for you. It shows no timers and no information you cannot see in game. It is an ordinary always-on-top window, the same approach other desktop overlays use. Riot's third-party rules prohibit automating decisions and tracking things like enemy ultimate timers; build suggestions are not in that category.
+Counterbuild uses Riot's local Live Client Data API, which exists for third-party tools, Riot's public Data Dragon files, and OP.GG's public stats endpoint. In ARAM Mayhem it also takes a screenshot of the middle of the game window about once a second and reads the augment card titles with Windows' built-in text recognition; the screenshots stay in memory and are never saved or sent anywhere. It does not read game memory, inject anything, press keys, pick augments, or buy items for you. It shows no timers and no information you cannot see in game. It is an ordinary always-on-top window, the same approach other desktop overlays use. Riot's third-party rules prohibit automating decisions and tracking things like enemy ultimate timers; build suggestions are not in that category.
+
+Riot has restricted showing augment statistics during the augment choice in some modes (for example in TFT). Check Riot's current third-party policies if that matters to you, and set `augments` to `off` (or untick *Rate augment cards* in the tray menu) to switch the screen reading off completely.
 
 It is a personal tool, not registered with or endorsed by Riot or OP.GG. Use it at your own discretion.
 
 ### What it sends to OP.GG
 
-Only your champion, role and game mode (for example "Ahri, mid, ranked"), once per champion and role per day; the answer is cached. Nothing about your account, name or match. OP.GG made that endpoint for AI assistants rather than as a documented app API and publishes no terms for it either way, so if they change or close it, the overlay keeps working with its built-in logic. Set `metaSource` to `off` to never contact OP.GG.
+Only your champion, role and game mode (for example "Ahri, mid, ranked"), once per champion and role per day, plus in ARAM Mayhem your champion's id to get its augment scores, once per champion per day; the answers are cached. Nothing from the screen is sent. Nothing about your account, name or match. OP.GG made that endpoint for AI assistants rather than as a documented app API and publishes no terms for it either way, so if they change or close it, the overlay keeps working with its built-in logic. Set `metaSource` to `off` to never contact OP.GG.
 
 ## How it decides, and its limits
 
@@ -102,7 +108,7 @@ Everything lives in `%LOCALAPPDATA%\Counterbuild\`:
 - `history.json` items you built per champion
 - `counterbuild.log` errors, if any
 - `ddragon\` cached patch data and icons
-- `meta\` cached OP.GG builds; `opgg_last_response.txt` and `opgg_tools.json` help debug if no OP.GG data shows up
+- `meta\` cached OP.GG builds and augment scores; `opgg_last_response.txt`, `opgg_augments_last_response.txt` and `opgg_tools.json` help debug if no OP.GG data shows up
 
 To uninstall: turn off *Start with Windows* in the tray menu, exit, then delete the `.exe` and that folder.
 
@@ -133,6 +139,7 @@ go run . -out preview.png
 | `app/` | Polling, patch data and icon cache, settings, build history |
 | `meta/` | OP.GG most-built data: a small MCP client, response parsing and a daily cache |
 | `main_windows.go`, `win32_windows.go` | Layered window, tray icon, hotkey |
+| `ocr_windows.go` | Screen capture and Windows OCR (WinRT) for the augment cards |
 | `main_other.go` | Preview tool for non-Windows systems |
 | `tools/mockgame/` | Fake Live Client API for testing |
 | `third_party/` | `golang.org/x/image` v0.31.0 and `golang.org/x/text` v0.29.0 subsets (BSD license) |

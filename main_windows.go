@@ -86,6 +86,11 @@ func main() {
 		windir = `C:\Windows`
 	}
 	a := app.New(cfg, dir, []string{filepath.Join(windir, "Fonts")}, logger)
+	if r, err := augmentReader(); err == nil {
+		a.SetScreenReader(r)
+	} else {
+		logger.Printf("augment cards can't be read: %v", err)
+	}
 	u := &ui{a: a, dir: dir, log: logger, stop: make(chan struct{}), lastScale: 1}
 	theUI = u
 	if err := u.create(); err != nil {
@@ -456,6 +461,7 @@ const (
 	cmdUnfocused = 300
 	cmdStartup   = 301
 	cmdMeta      = 302
+	cmdAugments  = 303
 	cmdSettings  = 400
 	cmdFolder    = 401
 	cmdExit      = 999
@@ -508,6 +514,7 @@ func (u *ui) showMenu() {
 	add(menu, mfPopup, sz, "Size")
 	add(menu, mfString|check(cfg.HideWhenUnfocused), cmdUnfocused, "Only show while the game is focused")
 	add(menu, mfString|check(cfg.MetaSource != "off"), cmdMeta, "Use OP.GG builds")
+	add(menu, mfString|check(cfg.Augments != "off"), cmdAugments, "Rate augment cards (ARAM Mayhem)")
 	add(menu, mfString|check(regGetRun(runKey) != ""), cmdStartup, "Start with Windows")
 	add(menu, mfSeparator, 0, "")
 	add(menu, mfString, cmdSettings, "Edit settings...")
@@ -543,6 +550,14 @@ func (u *ui) command(cmd int) {
 				c.MetaSource = "opgg"
 			} else {
 				c.MetaSource = "off"
+			}
+		})
+	case cmd == cmdAugments:
+		u.a.WithConfig(func(c *app.Config) {
+			if c.Augments == "off" {
+				c.Augments = "auto"
+			} else {
+				c.Augments = "off"
 			}
 		})
 	case cmd == cmdStartup:

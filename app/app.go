@@ -40,6 +40,23 @@ type App struct {
 	lastErr   string
 	lastSave  time.Time
 	gameStart time.Time
+
+	reader   ScreenReader
+	augMu    sync.Mutex
+	augBusy  bool
+	scanAt   time.Time
+	lines    []OCRLine
+	linesNew bool
+	scanErr  string
+	offer    []engine.AugmentCard
+	offerAt  time.Time
+}
+
+// SetScreenReader enables reading augment cards (Windows only).
+func (a *App) SetScreenReader(r ScreenReader) {
+	a.augMu.Lock()
+	a.reader = r
+	a.augMu.Unlock()
 }
 
 // New builds the app. dir is the data folder; fontDirs are searched for Segoe UI.
@@ -161,15 +178,16 @@ func (a *App) Step() Frame {
 
 	champ := ""
 	var mb *engine.Meta
+	var ch *engine.Champion
 	if self := g.Self(); self != nil {
 		champ = self.ChampID()
-		if mode := modeName(g.GameData.GameMode); cfg.MetaSource != "off" && mode != "" {
-			ch := cat.Champion(champ)
+		ch = cat.Champion(champ)
+		if mode := modeName(g.GameData.GameMode, g.GameData.MapNumber); cfg.MetaSource != "off" && mode != "" {
 			name := champ
 			if ch != nil {
 				name = ch.Name
 			}
-			req := meta.Request{ChampID: champ, ChampName: name, Position: rolePosition(self, ch, g.GameData.GameMode),
+			req := meta.Request{ChampID: champ, ChampName: name, Position: rolePosition(self, ch, mode),
 				Mode: mode, Version: a.Data.Version()}
 			mb = a.Meta.Lookup(req, cat)
 		}
@@ -181,6 +199,9 @@ func (a *App) Step() Frame {
 			return Frame{InGame: true}
 		}
 		return Frame{Img: a.R.Status(res.Note, style), Show: true, InGame: true}
+	}
+	if ch != nil && cfg.MetaSource != "off" && augmentMode(cfg.Augments, g.GameData.GameMode, g.GameData.MapNumber) {
+		res.Augments = a.augmentOffer(a.Meta.Augments(ch.Key, a.Data.Version()))
 	}
 	key := fmt.Sprintf("%s|%d", res.ChampID, start.Unix()/30)
 	a.Hist.Observe(key, res.ChampID, res.Completed)
@@ -194,7 +215,7 @@ func (a *App) Step() Frame {
 // rolePosition maps the game's lane assignment to a stats-site role, guessing
 // from the champion when the game doesn't say (blind pick, customs).
 func rolePosition(self *engine.LivePlayer, ch *engine.Champion, mode string) string {
-	if strings.EqualFold(mode, "ARAM") {
+	if mode == "aram" {
 		return "none"
 	}
 	switch strings.ToUpper(strings.TrimSpace(self.Position)) {
@@ -227,7 +248,8 @@ func rolePosition(self *engine.LivePlayer, ch *engine.Champion, mode string) str
 
 // modeName maps the game mode to a stats-site mode, or "" for modes the engine
 // doesn't support (Arena, Swarm, TFT), so no OP.GG lookup is made for them.
-func modeName(gameMode string) string {
+// Everything on Howling Abyss (map 12), ARAM Mayhem included, uses ARAM data.
+func modeName(gameMode string, mapNumber int) string {
 	switch strings.ToUpper(gameMode) {
 	case "CHERRY", "TFT", "STRAWBERRY":
 		return ""
@@ -236,7 +258,69 @@ func modeName(gameMode string) string {
 	case "URF", "ARURF":
 		return "urf"
 	}
+	if mapNumber == 12 {
+		return "aram"
+	}
 	return "ranked"
+}
+
+const (
+	scanEvery = time.Second             // how often to read the screen in Mayhem
+	offerHold = 2500 * time.Millisecond // keep showing an offer this long after the last read
+)
+
+// augmentOffer starts a screen read when one is due and returns the augment
+// cards currently on screen, rated with this champion's stats.
+func (a *App) augmentOffer(augs []meta.Augment) []engine.AugmentCard {
+	a.augMu.Lock()
+	defer a.augMu.Unlock()
+	if a.reader == nil || len(augs) == 0 {
+		return nil
+	}
+	if a.linesNew {
+		a.linesNew = false
+		if cards := offerFrom(matchCards(a.lines, augs)); cards != nil {
+			a.offer, a.offerAt = cards, time.Now()
+		}
+	}
+	if !a.augBusy && time.Since(a.scanAt) >= scanEvery {
+		a.augBusy, a.scanAt = true, time.Now()
+		go a.scan()
+	}
+	if time.Since(a.offerAt) < offerHold {
+		return a.offer
+	}
+	return nil
+}
+
+func (a *App) scan() {
+	var lines []OCRLine
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("crashed: %v", r)
+			}
+		}()
+		lines, err = a.reader()
+	}()
+	a.augMu.Lock()
+	a.augBusy = false
+	logErr := ""
+	if err != nil {
+		if msg := err.Error(); msg != a.scanErr {
+			a.scanErr, logErr = msg, msg
+		}
+	} else {
+		a.lines, a.linesNew, a.scanErr = lines, true, ""
+	}
+	a.augMu.Unlock()
+	if logErr != "" {
+		a.metaLog("augment cards: %s", logErr)
+	}
+	if len(lines) > 0 {
+		a.Wake()
+	}
 }
 
 // resolveCore maps configured core item names for this champion to item ids.

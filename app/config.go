@@ -24,6 +24,7 @@ type Config struct {
 	DataURL           string              `json:"dataUrl"`
 	MetaSource        string              `json:"metaSource"`
 	MetaURL           string              `json:"metaUrl"`
+	Augments          string              `json:"augments"`
 	Welcomed          bool                `json:"welcomed"`
 
 	path string
@@ -47,6 +48,7 @@ func DefaultConfig() *Config {
 		DataURL:           "https://ddragon.leagueoflegends.com",
 		MetaSource:        "opgg",
 		MetaURL:           "https://mcp-api.op.gg/mcp",
+		Augments:          "auto",
 	}
 }
 
@@ -119,6 +121,10 @@ func (c *Config) normalize() {
 	}
 	if c.MetaURL == "" {
 		c.MetaURL = d.MetaURL
+	}
+	c.Augments = strings.ToLower(strings.TrimSpace(c.Augments))
+	if c.Augments != "off" && c.Augments != "always" {
+		c.Augments = "auto"
 	}
 }
 

@@ -75,8 +75,17 @@ type Result struct {
 	Boots      *Pick
 	BuyNow     *BuyAdvice
 	Counter    *BuyAdvice
-	Completed  []int  // completed items the player owns
-	MetaSource string // set when community build data was used
+	Completed  []int         // completed items the player owns
+	MetaSource string        // set when community build data was used
+	Augments   []AugmentCard // augment cards on screen, left to right (ARAM Mayhem)
+}
+
+// AugmentCard is one augment offered on screen, rated against the others.
+type AugmentCard struct {
+	Name     string
+	Score    float64 // stats-site performance score, higher is better
+	Verdict  string  // "Take", "OK", "Skip" or "Even"
+	FewGames bool    // too rarely picked for the score to mean much
 }
 
 type reason struct {

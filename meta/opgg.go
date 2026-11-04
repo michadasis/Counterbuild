@@ -54,6 +54,9 @@ type Provider struct {
 	inflight bool
 	retryAt  map[string]time.Time
 	tool     *toolSpec
+
+	augMem  map[string]*augCache
+	augBusy bool
 }
 
 const (
@@ -77,6 +80,7 @@ func NewProvider(url, dir, appVersion string, logf func(string, ...any), onReady
 		version: appVersion,
 		mem:     map[string]*cached{},
 		retryAt: map[string]time.Time{},
+		augMem:  map[string]*augCache{},
 	}
 }
 
@@ -422,18 +426,17 @@ func (t *toolSpec) args(r Request) map[string]any {
 	return a
 }
 
-// query runs one MCP session: initialize, find the tool, call it until we
-// get item data or run out of field selections to try.
-func (p *Provider) query(ctx context.Context, r Request, cat *engine.Catalog) (*extracted, error) {
+// open starts an MCP session. The client is never nil, so callers can always
+// defer close.
+func (p *Provider) open(ctx context.Context) (*mcpClient, error) {
 	c := &mcpClient{url: p.url, http: p.http, agent: p.agent}
-	defer c.close(ctx)
 	raw, err := c.call(ctx, "initialize", map[string]any{
 		"protocolVersion": "2025-06-18",
 		"capabilities":    map[string]any{},
 		"clientInfo":      map[string]any{"name": "Counterbuild", "version": p.version},
 	})
 	if err != nil {
-		return nil, err
+		return c, err
 	}
 	var ir struct {
 		ProtocolVersion string `json:"protocolVersion"`
@@ -441,7 +444,17 @@ func (p *Provider) query(ctx context.Context, r Request, cat *engine.Catalog) (*
 	_ = json.Unmarshal(raw, &ir)
 	c.proto = ir.ProtocolVersion
 	c.notify(ctx, "notifications/initialized")
+	return c, nil
+}
 
+// query runs one MCP session: initialize, find the tool, call it until we
+// get item data or run out of field selections to try.
+func (p *Provider) query(ctx context.Context, r Request, cat *engine.Catalog) (*extracted, error) {
+	c, err := p.open(ctx)
+	defer c.close(ctx)
+	if err != nil {
+		return nil, err
+	}
 	t, err := p.findTool(ctx, c)
 	if err != nil {
 		return nil, err
@@ -479,7 +492,7 @@ func (p *Provider) query(ctx context.Context, r Request, cat *engine.Catalog) (*
 			lastErr = err
 			text = err.Error()
 		} else {
-			p.saveRaw(t.name, args, raw)
+			p.saveRaw("opgg_last_response.txt", t.name, args, raw)
 			ex, txt, isErr := extractResult(cat, raw)
 			if !isErr && ex != nil && len(ex.Pop) > 0 {
 				return ex, nil
@@ -504,9 +517,9 @@ func (p *Provider) query(ctx context.Context, r Request, cat *engine.Catalog) (*
 	return &extracted{Pop: map[int]float64{}, WR: map[int]float64{}}, nil
 }
 
-func (p *Provider) saveRaw(tool string, args map[string]any, raw json.RawMessage) {
+func (p *Provider) saveRaw(file, tool string, args map[string]any, raw json.RawMessage) {
 	_ = os.MkdirAll(p.dir, 0o755)
 	a, _ := json.Marshal(args)
 	body := fmt.Sprintf("tool: %s\narguments: %s\n\n%s\n", tool, a, raw)
-	_ = os.WriteFile(filepath.Join(p.dir, "opgg_last_response.txt"), []byte(body), 0o644)
+	_ = os.WriteFile(filepath.Join(p.dir, file), []byte(body), 0o644)
 }

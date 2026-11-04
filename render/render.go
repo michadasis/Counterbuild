@@ -412,6 +412,9 @@ func (r *Renderer) Render(res *engine.Result, ic Icons, st Style) *image.RGBA {
 	// Height pass.
 	h := pad + 16 + 18 + 26 + 50 + 12 + 16
 	h += float64(len(res.Picks)) * 50
+	if len(res.Augments) > 0 {
+		h += 12 + 16 + float64(len(res.Augments))*24 + 6
+	}
 	if res.Boots != nil {
 		h += 34
 	}
@@ -486,6 +489,37 @@ func (r *Renderer) Render(res *engine.Result, ic Icons, st Style) *image.RGBA {
 		}
 	}
 	y += 50
+
+	// Augment cards on screen (ARAM Mayhem), shown first while the choice is open.
+	if len(res.Augments) > 0 {
+		c.fillRRect(pad, y, inner, 1, 0, color.NRGBA{200, 170, 110, 55})
+		y += 12
+		c.text("AUGMENT PICK", pad, y+9, wBold, 9, cDim, 1.2)
+		src := "OP.GG score"
+		c.text(src, panelW-pad-c.measure(src, wRegular, 9.5), y+9, wRegular, 9.5, cDim, 0)
+		y += 16
+		for _, a := range res.Augments {
+			vc := cMuted
+			switch a.Verdict {
+			case "Take":
+				vc = cTeal
+				c.fillRRect(pad-6, y-2, inner+12, 22, 5, cRowHi)
+			case "Skip":
+				vc = cWarn
+			}
+			c.text(strings.ToUpper(a.Verdict), pad, y+13, wBold, 9.5, vc, 0.8)
+			score := fmt.Sprintf("%.1f", a.Score)
+			if a.FewGames {
+				score = "few games  " + score
+			}
+			sw := c.measure(score, wSemi, 11)
+			c.text(score, panelW-pad-sw, y+13, wSemi, 11, cMuted, 0)
+			tx := pad + 42
+			c.text(c.fit(a.Name, wSemi, 12.5, panelW-pad-sw-8-tx), tx, y+13, wSemi, 12.5, cLight, 0)
+			y += 24
+		}
+		y += 6
+	}
 
 	// Divider + section label.
 	c.fillRRect(pad, y, inner, 1, 0, color.NRGBA{200, 170, 110, 55})
