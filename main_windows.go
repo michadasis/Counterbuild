@@ -62,6 +62,7 @@ func main() {
 	// Keep the footprint small: the app allocates little, so collect eagerly.
 	debug.SetGCPercent(40)
 	debug.SetMemoryLimit(64 << 20)
+	yieldToGame()
 	setDPIAware()
 	mutex, _, err := pCreateMutexW.Call(0, 0, uintptr(unsafe.Pointer(u16(`Local\Counterbuild.Overlay`))))
 	if mutex != 0 && errors.Is(err, syscall.Errno(errExists)) {

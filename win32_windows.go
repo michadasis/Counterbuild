@@ -60,6 +60,10 @@ var (
 	pGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	pCreateMutexW     = kernel32.NewProc("CreateMutexW")
 
+	pGetCurrentProcess     = kernel32.NewProc("GetCurrentProcess")
+	pSetPriorityClass      = kernel32.NewProc("SetPriorityClass")
+	pSetProcessInformation = kernel32.NewProc("SetProcessInformation")
+
 	pShellNotifyIconW = shell32.NewProc("Shell_NotifyIconW")
 	pShellExecuteW    = shell32.NewProc("ShellExecuteW")
 
@@ -238,6 +242,24 @@ func copyU16(dst []uint16, s string) {
 
 func messageBox(title, text string, flags uintptr) {
 	pMessageBoxW.Call(0, uintptr(unsafe.Pointer(u16(text))), uintptr(unsafe.Pointer(u16(title))), flags)
+}
+
+// yieldToGame runs Counterbuild below normal priority, so whenever the game
+// needs the CPU it gets it first, and asks Windows to run it in efficiency
+// mode (EcoQoS): lower clock speeds or efficient cores, which on a laptop
+// leaves more of the shared power and heat budget to the game.
+func yieldToGame() {
+	const (
+		belowNormalPriorityClass = 0x00004000
+		processPowerThrottling   = 4 // PROCESS_INFORMATION_CLASS
+		throttleExecutionSpeed   = 1 // PROCESS_POWER_THROTTLING_EXECUTION_SPEED
+	)
+	self, _, _ := pGetCurrentProcess.Call()
+	pSetPriorityClass.Call(self, belowNormalPriorityClass)
+	if pSetProcessInformation.Find() == nil { // Windows 8 and newer; ignored before Windows 10 1709
+		state := struct{ version, controlMask, stateMask uint32 }{1, throttleExecutionSpeed, throttleExecutionSpeed}
+		pSetProcessInformation.Call(self, processPowerThrottling, uintptr(unsafe.Pointer(&state)), unsafe.Sizeof(state))
+	}
 }
 
 func setDPIAware() {
