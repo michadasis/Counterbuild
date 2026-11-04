@@ -560,12 +560,29 @@ func (s *scorer) metaFloor(all []scored) {
 	}
 }
 
+// pinCore puts the items the player pinned in "core" above everything else
+// until they own them, as the settings promise. Among themselves they keep
+// their order.
+func (s *scorer) pinCore(all []scored) {
+	top := 0.0
+	for _, sc := range all {
+		if !s.core[sc.it.ID] {
+			top = math.Max(top, sc.score)
+		}
+	}
+	for i := range all {
+		if s.core[all[i].it.ID] {
+			all[i].score += top
+		}
+	}
+}
+
 // offMeta reports whether a pick is outside the community builds for this
 // champion, so the overlay can say so.
 func (s *scorer) offMeta(id int) bool {
 	m := s.meta
-	if m == nil || len(m.Slot) == 0 {
-		return false
+	if m == nil || len(m.Slot) == 0 || s.core[id] {
+		return false // items pinned in "core" are the player's own choice
 	}
 	_, hasSlot := m.Slot[id]
 	return !hasSlot && m.Pop[id] == 0
@@ -848,6 +865,7 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 		all = append(all, scored{it, v, v / float64(it.Cost), rs})
 	}
 	s.metaFloor(all)
+	s.pinCore(all)
 	sort.SliceStable(all, func(i, j int) bool {
 		if all[i].score == all[j].score {
 			return all[i].it.ID < all[j].it.ID

@@ -553,6 +553,23 @@ func TestTransforms(t *testing.T) {
 	}
 }
 
+func TestPinnedCoreBeatsBuildOrder(t *testing.T) {
+	c := testCatalog(t)
+	g := withStats(c, mkGame(pl{champ: "Ezreal", team: "ORDER", level: 9, pos: "BOTTOM", items: []int{3078}}, 1100, 12,
+		pl{champ: "Garen", team: "CHAOS", level: 9}, pl{champ: "LeeSin", team: "CHAOS", level: 9},
+		pl{champ: "Orianna", team: "CHAOS", level: 9}, pl{champ: "Caitlyn", team: "CHAOS", level: 9}, pl{champ: "Thresh", team: "CHAOS", level: 8}))
+	// OP.GG says Manamune next, but the player pinned Infinity Edge.
+	m := &Meta{Pop: map[int]float64{3078: 1, 3004: 1}, Slot: map[int]float64{3078: 1, 3004: 2}, Source: "OP.GG"}
+	r := c.Recommend(g, Options{Meta: m, Core: []int{3031}})
+	dump(t, "ezreal pinned core", r)
+	if r.Picks[0].Name != "Infinity Edge" || strings.HasPrefix(r.Picks[0].Reasons[0], "off-meta") {
+		t.Fatalf("pinned core item should come first, not marked off-meta, got %v %v", pickNames(r), r.Picks[0].Reasons)
+	}
+	if !hasPick(r, "Manamune") {
+		t.Fatalf("OP.GG's next item should still be listed, got %v", pickNames(r))
+	}
+}
+
 func TestComponentDoesNotBlockItsItem(t *testing.T) {
 	c := testCatalog(t)
 	// Tear of the Goddess has the unique Manaflow passive, like the items built from it.
