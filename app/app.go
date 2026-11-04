@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"counterbuild/engine"
+	"counterbuild/meta"
 	"counterbuild/render"
 )
 
@@ -28,6 +29,7 @@ type App struct {
 	Data *Data
 	Live *Live
 	Hist *History
+	Meta *meta.Provider
 	R    *render.Renderer
 	Log  *log.Logger
 
@@ -46,6 +48,7 @@ func New(cfg *Config, dir string, fontDirs []string, logger *log.Logger) *App {
 	a.Data = NewData(dir, cfg.DataURL, a.Wake)
 	a.Live = NewLive(cfg.LiveURL)
 	a.Hist = LoadHistory(dir + "/history.json")
+	a.Meta = meta.NewProvider(cfg.MetaURL, dir, Version, a.metaLog, a.Wake)
 	a.R = render.NewRenderer(fontDirs...)
 	a.SetScale(1)
 	return a
@@ -71,6 +74,12 @@ func (a *App) WithConfig(f func(c *Config)) {
 	_ = a.Cfg.Save()
 	a.cfgMu.Unlock()
 	a.Wake()
+}
+
+func (a *App) metaLog(format string, args ...any) {
+	if a.Log != nil {
+		a.Log.Printf(format, args...)
+	}
 }
 
 func (a *App) logf(format string, args ...any) {
@@ -151,10 +160,21 @@ func (a *App) Step() Frame {
 	a.gameStart = start
 
 	champ := ""
+	var mb *engine.Meta
 	if self := g.Self(); self != nil {
 		champ = self.ChampID()
+		if cfg.MetaSource != "off" {
+			ch := cat.Champion(champ)
+			name := champ
+			if ch != nil {
+				name = ch.Name
+			}
+			req := meta.Request{ChampID: champ, ChampName: name, Position: rolePosition(self, ch, g.GameData.GameMode),
+				Mode: modeName(g.GameData.GameMode), Version: a.Data.Version()}
+			mb = a.Meta.Lookup(req, cat)
+		}
 	}
-	opts := engine.Options{MaxItems: cfg.MaxItems, Affinity: a.Hist.Affinity(champ), Core: resolveCore(cat, cfg.Core, champ)}
+	opts := engine.Options{MaxItems: cfg.MaxItems, Affinity: a.Hist.Affinity(champ), Core: resolveCore(cat, cfg.Core, champ), Meta: mb}
 	res := cat.Recommend(g, opts)
 	if !res.Supported {
 		if res.Note == "" {
@@ -169,6 +189,50 @@ func (a *App) Step() Frame {
 		a.lastSave = time.Now()
 	}
 	return Frame{Img: a.R.Render(res, a.Data, style), Show: true, InGame: true}
+}
+
+// rolePosition maps the game's lane assignment to a stats-site role, guessing
+// from the champion when the game doesn't say (blind pick, customs).
+func rolePosition(self *engine.LivePlayer, ch *engine.Champion, mode string) string {
+	if strings.EqualFold(mode, "ARAM") {
+		return "none"
+	}
+	switch strings.ToUpper(strings.TrimSpace(self.Position)) {
+	case "TOP":
+		return "top"
+	case "JUNGLE":
+		return "jungle"
+	case "MIDDLE", "MID":
+		return "mid"
+	case "BOTTOM", "BOT", "ADC":
+		return "adc"
+	case "UTILITY", "SUPPORT":
+		return "support"
+	}
+	if self.HasSmite() {
+		return "jungle"
+	}
+	if ch != nil && len(ch.Tags) > 0 {
+		switch ch.Tags[0] {
+		case "Marksman":
+			return "adc"
+		case "Support":
+			return "support"
+		case "Mage", "Assassin":
+			return "mid"
+		}
+	}
+	return "top"
+}
+
+func modeName(gameMode string) string {
+	switch strings.ToUpper(gameMode) {
+	case "ARAM":
+		return "aram"
+	case "URF", "ARURF":
+		return "urf"
+	}
+	return "ranked"
 }
 
 // resolveCore maps configured core item names for this champion to item ids.

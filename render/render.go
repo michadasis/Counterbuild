@@ -491,6 +491,10 @@ func (r *Renderer) Render(res *engine.Result, ic Icons, st Style) *image.RGBA {
 	c.fillRRect(pad, y, inner, 1, 0, color.NRGBA{200, 170, 110, 55})
 	y += 12
 	c.text("BUILD NEXT", pad, y+9, wBold, 9, cDim, 1.2)
+	if res.MetaSource != "" {
+		src := "with " + res.MetaSource + " stats"
+		c.text(src, panelW-pad-c.measure(src, wRegular, 9.5), y+9, wRegular, 9.5, cDim, 0)
+	}
 	y += 16
 
 	for i, p := range res.Picks {

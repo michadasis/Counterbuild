@@ -22,6 +22,8 @@ type Config struct {
 	Core              map[string][]string `json:"core"`
 	LiveURL           string              `json:"liveUrl"`
 	DataURL           string              `json:"dataUrl"`
+	MetaSource        string              `json:"metaSource"`
+	MetaURL           string              `json:"metaUrl"`
 	Welcomed          bool                `json:"welcomed"`
 
 	path string
@@ -43,6 +45,8 @@ func DefaultConfig() *Config {
 		Core:              map[string][]string{},
 		LiveURL:           "https://127.0.0.1:2999/liveclientdata/allgamedata",
 		DataURL:           "https://ddragon.leagueoflegends.com",
+		MetaSource:        "opgg",
+		MetaURL:           "https://mcp-api.op.gg/mcp",
 	}
 }
 
@@ -108,6 +112,13 @@ func (c *Config) normalize() {
 	}
 	if c.DataURL == "" {
 		c.DataURL = d.DataURL
+	}
+	c.MetaSource = strings.ToLower(strings.TrimSpace(c.MetaSource))
+	if c.MetaSource != "off" {
+		c.MetaSource = "opgg"
+	}
+	if c.MetaURL == "" {
+		c.MetaURL = d.MetaURL
 	}
 }
 

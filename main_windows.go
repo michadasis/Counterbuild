@@ -25,10 +25,9 @@ import (
 
 func init() { runtime.LockOSThread() }
 
-const (
-	runKey  = "Counterbuild"
-	version = "1.0.0"
-)
+const runKey = "Counterbuild"
+
+var version = app.Version
 
 type ui struct {
 	a          *app.App
@@ -456,6 +455,7 @@ const (
 	cmdSizeBase  = 200
 	cmdUnfocused = 300
 	cmdStartup   = 301
+	cmdMeta      = 302
 	cmdSettings  = 400
 	cmdFolder    = 401
 	cmdExit      = 999
@@ -507,6 +507,7 @@ func (u *ui) showMenu() {
 	}
 	add(menu, mfPopup, sz, "Size")
 	add(menu, mfString|check(cfg.HideWhenUnfocused), cmdUnfocused, "Only show while the game is focused")
+	add(menu, mfString|check(cfg.MetaSource != "off"), cmdMeta, "Use OP.GG builds")
 	add(menu, mfString|check(regGetRun(runKey) != ""), cmdStartup, "Start with Windows")
 	add(menu, mfSeparator, 0, "")
 	add(menu, mfString, cmdSettings, "Edit settings...")
@@ -536,6 +537,14 @@ func (u *ui) command(cmd int) {
 		u.a.WithConfig(func(c *app.Config) { c.Scale = v })
 	case cmd == cmdUnfocused:
 		u.a.WithConfig(func(c *app.Config) { c.HideWhenUnfocused = !c.HideWhenUnfocused })
+	case cmd == cmdMeta:
+		u.a.WithConfig(func(c *app.Config) {
+			if c.MetaSource == "off" {
+				c.MetaSource = "opgg"
+			} else {
+				c.MetaSource = "off"
+			}
+		})
 	case cmd == cmdStartup:
 		var err error
 		if regGetRun(runKey) != "" {

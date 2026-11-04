@@ -65,6 +65,7 @@ func TestStepEndToEnd(t *testing.T) {
 	}
 	cfg.LiveURL = srv.URL
 	cfg.DataURL = "http://127.0.0.1:1" // unreachable: must fall back to the cache
+	cfg.MetaSource = "off"             // tests never contact OP.GG
 	a := New(cfg, dir, nil, nil)
 	a.Data.Refresh()
 	if a.Data.Catalog() == nil {
@@ -87,6 +88,7 @@ func TestNoGame(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := LoadConfig(filepath.Join(dir, "config.json"))
 	cfg.LiveURL = "https://127.0.0.1:1/liveclientdata/allgamedata"
+	cfg.MetaSource = "off"
 	a := New(cfg, dir, nil, nil)
 	if f := a.Step(); f.Show || f.InGame {
 		t.Fatalf("expected empty frame without a game, got %+v", f)

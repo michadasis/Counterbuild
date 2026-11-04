@@ -14,6 +14,15 @@ type Options struct {
 	Affinity map[int]float64
 	// Core lists item ids the player always wants on this champion (from config).
 	Core []int
+	// Meta is community build data for this champion and role (may be nil).
+	Meta *Meta
+}
+
+// Meta is what players most often build on a champion, from a stats site.
+type Meta struct {
+	Pop    map[int]float64 // item id -> 0..1 popularity (1 = most built)
+	WR     map[int]float64 // item id -> win rate 0..1, when known
+	Source string          // e.g. "OP.GG"
 }
 
 // Pick is one recommended item.
@@ -52,21 +61,22 @@ type EnemyView struct {
 
 // Result is everything the overlay shows.
 type Result struct {
-	Supported bool
-	Note      string
-	ChampID   string
-	Champion  string
-	Archetype string
-	Level     int
-	Gold      int
-	GameTime  float64
-	EnemyPhys float64
-	Enemies   []EnemyView
-	Picks     []Pick
-	Boots     *Pick
-	BuyNow    *BuyAdvice
-	Counter   *BuyAdvice
-	Completed []int // completed items the player owns
+	Supported  bool
+	Note       string
+	ChampID    string
+	Champion   string
+	Archetype  string
+	Level      int
+	Gold       int
+	GameTime   float64
+	EnemyPhys  float64
+	Enemies    []EnemyView
+	Picks      []Pick
+	Boots      *Pick
+	BuyNow     *BuyAdvice
+	Counter    *BuyAdvice
+	Completed  []int  // completed items the player owns
+	MetaSource string // set when community build data was used
 }
 
 type reason struct {
@@ -92,6 +102,7 @@ type scorer struct {
 	ints     map[Feature]float64
 	affinity map[int]float64
 	core     map[int]bool
+	meta     *Meta
 	early    bool
 	ownAH    bool
 }
@@ -426,6 +437,20 @@ func (s *scorer) score(it *Item) (float64, []reason) {
 		value *= 1.6
 		reasons = append(reasons, reason{"your core build", value})
 	}
+	if m := s.meta; m != nil {
+		if p := m.Pop[it.ID]; p > 0 {
+			boost := 0.4 * p
+			value *= 1 + boost
+			label := "popular on " + m.Source
+			if p >= 0.6 {
+				label = m.Source + " core"
+			}
+			if wr, ok := m.WR[it.ID]; ok && wr > 0 {
+				label += fmt.Sprintf(" (%d%% WR)", int(math.Round(wr*100)))
+			}
+			reasons = append(reasons, reason{label, boost * value * 0.9})
+		}
+	}
 	if a := s.affinity[it.ID]; a > 0 {
 		value *= 1 + 0.25*a
 		reasons = append(reasons, reason{"your usual build", 0.25 * a * value})
@@ -587,6 +612,10 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 	s := &scorer{c: c, ctx: ctx, arch: arch, U: archWeights[arch], physMine: physMine, affinity: opt.Affinity,
 		myLeth: myLeth, myMPen: myMPen, myArPct: 1 - myArKeep, myMPct: 1 - myMKeep,
 		core: map[int]bool{}, early: len(res.Completed) == 0}
+	if opt.Meta != nil && len(opt.Meta.Pop) > 0 {
+		s.meta = opt.Meta
+		res.MetaSource = opt.Meta.Source
+	}
 	for _, id := range opt.Core {
 		s.core[id] = true
 	}
@@ -873,13 +902,14 @@ func (s *scorer) urgentCounter(res *Result, owned []int, freeSlots int) *BuyAdvi
 	if s.arch.support() {
 		return nil
 	}
+	// Skip only when the top pick already is the counter; otherwise "buy now"
+	// would point at a different item while the counter is urgent.
 	pickHas := func(f Feature) bool {
-		for _, p := range res.Picks {
-			if it := s.c.Items[p.ID]; it != nil && it.Feat&f != 0 {
-				return true
-			}
+		if len(res.Picks) == 0 {
+			return false
 		}
-		return false
+		it := s.c.Items[res.Picks[0].ID]
+		return it != nil && it.Feat&f != 0
 	}
 	type want struct {
 		f     Feature

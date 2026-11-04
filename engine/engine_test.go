@@ -394,3 +394,49 @@ func TestPlanBuyDuplicateComponent(t *testing.T) {
 		t.Fatalf("expected inventory full note, got %+v", adv)
 	}
 }
+
+func TestMetaBuildGuidesCore(t *testing.T) {
+	c := testCatalog(t)
+	enemies := []pl{{champ: "Garen", team: "CHAOS", level: 6}, {champ: "LeeSin", team: "CHAOS", level: 6},
+		{champ: "Orianna", team: "CHAOS", level: 6}, {champ: "Caitlyn", team: "CHAOS", level: 6}, {champ: "Thresh", team: "CHAOS", level: 5, pos: "UTILITY"}}
+	g := withStats(c, mkGame(pl{champ: "Ezreal", team: "ORDER", level: 6, pos: "BOTTOM"}, 1100, 8, enemies...))
+	plain := c.Recommend(g, Options{})
+	m := &Meta{Pop: map[int]float64{3078: 1, 3004: 0.95, 3158: 0.9}, WR: map[int]float64{3078: 0.52}, Source: "OP.GG"}
+	r := c.Recommend(g, Options{Meta: m})
+	dump(t, "ezreal plain", plain)
+	dump(t, "ezreal + meta", r)
+	if !hasPick(r, "Trinity Force") || !hasPick(r, "Manamune") {
+		t.Fatalf("meta core should be picked, got %v", pickNames(r))
+	}
+	if r.MetaSource != "OP.GG" {
+		t.Fatalf("meta source not reported")
+	}
+	found := false
+	for _, p := range r.Picks {
+		for _, why := range p.Reasons {
+			if strings.Contains(why, "OP.GG core") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected an OP.GG reason")
+	}
+}
+
+func TestCountersStillBeatMeta(t *testing.T) {
+	c := testCatalog(t)
+	g := withStats(c, mkGame(pl{champ: "Jinx", team: "ORDER", level: 11, pos: "BOTTOM", items: []int{3032, 3006, 1018}}, 900, 18,
+		pl{champ: "Soraka", team: "CHAOS", level: 10, pos: "UTILITY", items: []int{3869, 6617, 3158}},
+		pl{champ: "Aatrox", team: "CHAOS", level: 12, k: 5, d: 2, keystone: ksConqueror, items: []int{6692, 3047, 6333}},
+		pl{champ: "Vladimir", team: "CHAOS", level: 11, k: 3, d: 3, items: []int{4633, 3020}},
+		pl{champ: "Briar", team: "CHAOS", level: 11, k: 2, d: 4, items: []int{3071, 3111}},
+		pl{champ: "Ezreal", team: "CHAOS", level: 10, k: 1, d: 3, items: []int{3078, 3158}},
+	))
+	m := &Meta{Pop: map[int]float64{3031: 1, 3046: 0.8, 3036: 0.7, 3072: 0.5}, Source: "OP.GG"}
+	r := c.Recommend(g, Options{Meta: m})
+	dump(t, "healers + meta", r)
+	if !hasPick(r, "Mortal Reminder") && (r.Counter == nil || r.Counter.Name != "Executioner's Calling") {
+		t.Fatalf("anti-heal lost to meta: %v counter %+v", pickNames(r), r.Counter)
+	}
+}

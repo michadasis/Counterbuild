@@ -56,6 +56,13 @@ func (d *Data) Catalog() *engine.Catalog {
 	return d.cat
 }
 
+// Version is the patch of the loaded data ("" before the first load).
+func (d *Data) Version() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.version
+}
+
 func (d *Data) Err() error {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
