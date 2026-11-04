@@ -22,6 +22,7 @@ type Options struct {
 type Meta struct {
 	Pop    map[int]float64 // item id -> 0..1 popularity (1 = most built)
 	WR     map[int]float64 // item id -> win rate 0..1, when known
+	Slot   map[int]float64 // item id -> typical build slot (1 = first completed item), when known
 	Source string          // e.g. "OP.GG"
 }
 
@@ -113,6 +114,7 @@ type scorer struct {
 	affinity map[int]float64
 	core     map[int]bool
 	meta     *Meta
+	nextSlot int // which completed item the player is buying next (1 = first)
 	early    bool
 	ownAH    bool
 }
@@ -448,13 +450,9 @@ func (s *scorer) score(it *Item) (float64, []reason) {
 		reasons = append(reasons, reason{"your core build", value})
 	}
 	if m := s.meta; m != nil {
-		if p := m.Pop[it.ID]; p > 0 {
-			boost := 0.4 * p
-			value *= 1 + boost
-			label := "popular on " + m.Source
-			if p >= 0.6 {
-				label = m.Source + " core"
-			}
+		boost, label := s.metaBoost(it.ID)
+		value *= 1 + boost
+		if label != "" && boost > 0 {
 			if wr, ok := m.WR[it.ID]; ok && wr > 0 {
 				label += fmt.Sprintf(" (%d%% WR)", int(math.Round(wr*100)))
 			}
@@ -466,6 +464,111 @@ func (s *scorer) score(it *Item) (float64, []reason) {
 		reasons = append(reasons, reason{"your usual build", 0.25 * a * value})
 	}
 	return value, reasons
+}
+
+// metaBoost is how much community build data lifts (or lowers) an item now.
+//
+// With build slots, it follows the build order: the options players build as
+// their next item get the full boost, the item after that half of it, and
+// items usually built two or more slots later are held back a little, so a
+// 5th item isn't suggested second. Strong counters can still win, since they
+// score on what the enemy team does. Without slots, popular items get a
+// smaller, flat boost.
+func (s *scorer) metaBoost(id int) (float64, string) {
+	m := s.meta
+	p := m.Pop[id]
+	slot, hasSlot := m.Slot[id]
+	if len(m.Slot) == 0 || !hasSlot {
+		if p <= 0 {
+			return 0, ""
+		}
+		w := 0.4
+		if len(m.Slot) > 0 {
+			w = 0.2 // popular, but not part of the build order (boots, starters)
+		}
+		label := "popular on " + m.Source
+		if p >= 0.6 {
+			label = m.Source + " core"
+		}
+		return w * p, label
+	}
+	boost := 0.8 * s.slotFit(id)
+	if d := slot - float64(s.nextSlot); d > 1.5 {
+		boost = -0.25 * math.Min(1, (d-1.5)/1.5)
+	}
+	n := int(math.Round(slot))
+	label := fmt.Sprintf("%s item %d", m.Source, n)
+	if slot < 3.5 {
+		label = m.Source + " core"
+	}
+	return boost, label
+}
+
+// scored is a candidate item with its value, its score (value per gold) and
+// why it scored that way.
+type scored struct {
+	it      *Item
+	value   float64
+	score   float64
+	reasons []reason
+}
+
+// slotFit is 1 for items players build as their next item (or are overdue
+// on), 0..1 for the item after that, and 0 for later or unknown items.
+func (s *scorer) slotFit(id int) float64 {
+	if s.meta == nil {
+		return 0
+	}
+	slot, ok := s.meta.Slot[id]
+	if !ok {
+		return 0
+	}
+	switch d := slot - float64(s.nextSlot); {
+	case d <= 0.5:
+		return 1
+	case d <= 1.5:
+		return 1.5 - d
+	}
+	return 0
+}
+
+// metaFloor lifts the items players build next to near the top of the list.
+// The engine's own scoring rates items by stats and the enemy team, which can
+// badly undervalue a champion-specific choice (Warmog's on Soraka), so a
+// multiplier alone isn't enough. The floor is 80-110% of the best score, by
+// popularity and fit, so a strong counter can still come first.
+func (s *scorer) metaFloor(all []scored) {
+	if s.meta == nil || len(s.meta.Slot) == 0 {
+		return
+	}
+	top := 0.0
+	for _, sc := range all {
+		top = math.Max(top, sc.score)
+	}
+	for i := range all {
+		f := s.slotFit(all[i].it.ID)
+		if f <= 0 {
+			continue
+		}
+		p := s.meta.Pop[all[i].it.ID]
+		if p <= 0 {
+			p = 0.5
+		}
+		if floor := top * (0.8 + 0.3*f*p); all[i].score < floor {
+			all[i].score = floor
+		}
+	}
+}
+
+// offMeta reports whether a pick is outside the community builds for this
+// champion, so the overlay can say so.
+func (s *scorer) offMeta(id int) bool {
+	m := s.meta
+	if m == nil || len(m.Slot) == 0 {
+		return false
+	}
+	_, hasSlot := m.Slot[id]
+	return !hasSlot && m.Pop[id] == 0
 }
 
 func sign(v float64) float64 {
@@ -621,7 +724,7 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 
 	s := &scorer{c: c, ctx: ctx, arch: arch, U: archWeights[arch], physMine: physMine, affinity: opt.Affinity,
 		myLeth: myLeth, myMPen: myMPen, myArPct: 1 - myArKeep, myMPct: 1 - myMKeep,
-		core: map[int]bool{}, early: len(res.Completed) == 0}
+		core: map[int]bool{}, early: len(res.Completed) == 0, nextSlot: len(res.Completed) + 1}
 	if opt.Meta != nil && len(opt.Meta.Pop) > 0 {
 		s.meta = opt.Meta
 		res.MetaSource = opt.Meta.Source
@@ -720,12 +823,6 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 	if len(cands) < 30 {
 		cands = c.completedFor(mapID, false)
 	}
-	type scored struct {
-		it      *Item
-		value   float64
-		score   float64
-		reasons []reason
-	}
 	var all []scored
 	for _, it := range cands {
 		if ownedSet[it.ID] {
@@ -744,6 +841,7 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 		v, rs := s.score(it)
 		all = append(all, scored{it, v, v / float64(it.Cost), rs})
 	}
+	s.metaFloor(all)
 	sort.SliceStable(all, func(i, j int) bool {
 		if all[i].score == all[j].score {
 			return all[i].it.ID < all[j].it.ID
@@ -767,9 +865,13 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 		for _, gname := range uniqueGroups(sc.it) {
 			pickedGroups[gname] = true
 		}
+		reasons := topReasons(sc.reasons, arch)
+		if s.offMeta(sc.it.ID) && len(reasons) > 0 {
+			reasons[0] = "off-meta: " + reasons[0]
+		}
 		res.Picks = append(res.Picks, Pick{ID: sc.it.ID, Name: sc.it.Name, Cost: sc.it.Cost,
 			Remaining: c.RemainingCost(sc.it.ID, owned), Value: sc.value, Score: sc.score,
-			Reasons: topReasons(sc.reasons, arch)})
+			Reasons: reasons})
 	}
 
 	// Boots.

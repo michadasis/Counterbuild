@@ -440,3 +440,90 @@ func TestCountersStillBeatMeta(t *testing.T) {
 		t.Fatalf("anti-heal lost to meta: %v counter %+v", pickNames(r), r.Counter)
 	}
 }
+
+// sorakaARAM is what OP.GG's real ARAM answer for Soraka turns into (see
+// meta/testdata/opgg_soraka_aram.txt): Moonstone first, Warmog's in the core
+// build, Spirit Visage and Redemption as 4th/5th items.
+var sorakaARAM = &Meta{
+	Pop:    map[int]float64{3065: 0.65, 3083: 1, 3107: 0.65, 3158: 1, 3504: 0.38, 6617: 1},
+	WR:     map[int]float64{3065: 0.485, 3083: 0.504, 3107: 0.479, 3158: 0.51, 3504: 0.488, 6617: 0.517},
+	Slot:   map[int]float64{3065: 4.35, 3083: 2.38, 3107: 4.66, 3504: 5, 6617: 1},
+	Source: "OP.GG",
+}
+
+func sorakaGame(c *Catalog, items []int) *LiveGame {
+	g := withStats(c, mkGame(pl{champ: "Soraka", team: "ORDER", level: 9, items: items}, 2400, 9,
+		pl{champ: "KSante", team: "CHAOS", level: 9, k: 2, d: 2, items: []int{3068}},
+		pl{champ: "Volibear", team: "CHAOS", level: 9, k: 3, d: 2, items: []int{3078}},
+		pl{champ: "Ahri", team: "CHAOS", level: 9, k: 2, d: 3, items: []int{6655}},
+		pl{champ: "Jinx", team: "CHAOS", level: 9, k: 4, d: 2, items: []int{3031}},
+		pl{champ: "Lux", team: "CHAOS", level: 9, k: 1, d: 3, items: []int{6655}},
+	))
+	g.GameData.GameMode = "KIWI"
+	g.GameData.MapNumber = 12
+	return g
+}
+
+func TestMetaFollowsBuildOrder(t *testing.T) {
+	c := testCatalog(t)
+	// Moonstone done: the next OP.GG item is Warmog's, Redemption is a 4th/5th item.
+	r := c.Recommend(sorakaGame(c, []int{6617, 3158}), Options{Meta: sorakaARAM})
+	dump(t, "soraka after moonstone", r)
+	if len(r.Picks) == 0 || r.Picks[0].Name != "Warmog's Armor" {
+		t.Fatalf("expected Warmog's next, got %v", pickNames(r))
+	}
+	if r.Picks[0].Reasons[0] != "OP.GG core (50% WR)" {
+		t.Fatalf("expected the OP.GG reason first, got %v", r.Picks[0].Reasons)
+	}
+	for _, p := range r.Picks[:2] {
+		if p.Name == "Redemption" {
+			t.Fatalf("Redemption suggested too early: %v", pickNames(r))
+		}
+	}
+	// Three items in: now the 4th/5th item options come up.
+	r = c.Recommend(sorakaGame(c, []int{6617, 3083, 3222, 3158}), Options{Meta: sorakaARAM})
+	dump(t, "soraka 4th item", r)
+	if !hasPick(r, "Redemption") || !hasPick(r, "Spirit Visage") {
+		t.Fatalf("expected Redemption and Spirit Visage as 4th item options, got %v", pickNames(r))
+	}
+}
+
+func TestOffMetaPickIsLabelled(t *testing.T) {
+	c := testCatalog(t)
+	m := &Meta{Pop: map[int]float64{3089: 1}, Slot: map[int]float64{3089: 4}, Source: "OP.GG"}
+	r := c.Recommend(sorakaGame(c, []int{6617, 3158}), Options{Meta: m})
+	dump(t, "soraka off-meta", r)
+	found := false
+	for _, p := range r.Picks {
+		if p.Name != "Rabadon's Deathcap" && strings.HasPrefix(p.Reasons[0], "off-meta: ") {
+			found = true
+		}
+		if p.Name == "Rabadon's Deathcap" && strings.HasPrefix(p.Reasons[0], "off-meta") {
+			t.Fatalf("an OP.GG item is not off-meta: %v", p.Reasons)
+		}
+	}
+	if !found {
+		t.Fatalf("expected picks outside the OP.GG build to say off-meta")
+	}
+}
+
+func TestCountersStillBeatBuildOrder(t *testing.T) {
+	c := testCatalog(t)
+	g := withStats(c, mkGame(pl{champ: "Jinx", team: "ORDER", level: 11, pos: "BOTTOM", items: []int{3032, 3006, 1018}}, 900, 18,
+		pl{champ: "Soraka", team: "CHAOS", level: 10, pos: "UTILITY", items: []int{3869, 6617, 3158}},
+		pl{champ: "Aatrox", team: "CHAOS", level: 12, k: 5, d: 2, keystone: ksConqueror, items: []int{6692, 3047, 6333}},
+		pl{champ: "Vladimir", team: "CHAOS", level: 11, k: 3, d: 3, items: []int{4633, 3020}},
+		pl{champ: "Briar", team: "CHAOS", level: 11, k: 2, d: 4, items: []int{3071, 3111}},
+		pl{champ: "Ezreal", team: "CHAOS", level: 10, k: 1, d: 3, items: []int{3078, 3158}},
+	))
+	// The usual 2nd and 3rd items have no anti-heal.
+	m := &Meta{Pop: map[int]float64{3032: 1, 3031: 1, 3046: 0.8, 3036: 0.6}, Slot: map[int]float64{3032: 1, 3031: 2, 3046: 3, 3036: 4}, Source: "OP.GG"}
+	r := c.Recommend(g, Options{Meta: m})
+	dump(t, "healers + build order", r)
+	if r.Picks[0].Name != "Infinity Edge" {
+		t.Fatalf("expected the usual 2nd item first, got %v", pickNames(r))
+	}
+	if !hasPick(r, "Mortal Reminder") && (r.Counter == nil || r.Counter.Name != "Executioner's Calling") {
+		t.Fatalf("anti-heal lost to the build order: %v counter %+v", pickNames(r), r.Counter)
+	}
+}
