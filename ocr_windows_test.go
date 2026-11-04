@@ -120,7 +120,7 @@ func TestRealMayhemCards(t *testing.T) {
 	}
 	names := map[int]string{1318: "Upgrade Zhonya's", 1037: "First-Aid Kit", 1205: "ADAPt", 2138: "Adaptive Ward", 1404: "Stats!"}
 	stats := []meta.Augment{{ID: 1318, Name: "Upgrade Zhonya's", Tier: 4, Score: 82.46, Pop: 0.15}, {ID: 1404, Name: "Stats!", Tier: 4, Score: 76, Pop: 0.1}}
-	cards := app.RateCards(toLines(raw, w), meta.MergeAugments(stats, names))
+	cards := app.RateCards(toLines(raw, w, h), meta.MergeAugments(stats, names))
 	t.Logf("%+v", cards)
 	if len(cards) != 3 || cards[0].Name != "Upgrade Zhonya's" || cards[1].Name != "First-Aid Kit" || cards[2].Name != "ADAPt" {
 		t.Fatalf("expected the three cards left to right, got %+v", cards)
@@ -128,5 +128,19 @@ func TestRealMayhemCards(t *testing.T) {
 	// First-Aid Kit and ADAPt aren't in OP.GG's tier 3-5 list: they are in its top tiers.
 	if cards[0].Verdict != "Skip" || cards[1].Verdict != "Even" || cards[2].Verdict != "Even" || cards[1].Tier != 1 {
 		t.Fatalf("expected Skip, then two top-tier cards, got %+v", cards)
+	}
+}
+
+// TestTitleStrip checks that the strip read for card titles covers where they
+// are (41% of the height at 1080p) and that shrinking a 1440p capture to 1080p
+// keeps the right size.
+func TestTitleStrip(t *testing.T) {
+	x, y, w, h := titleStrip(0, 0, 1920, 1080)
+	if y > 444-40 || y+h < 444+40 || x > 432 || x+w < 1488 {
+		t.Fatalf("strip %d,%d %dx%d misses the card titles", x, y, w, h)
+	}
+	pix := make([]byte, 1946*374*4)
+	if _, nw, nh := downscale(pix, 1946, 374, 1080.0/1440); nw != 1459 || nh != 280 {
+		t.Fatalf("downscaled to %dx%d", nw, nh)
 	}
 }

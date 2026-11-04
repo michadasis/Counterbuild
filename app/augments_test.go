@@ -123,3 +123,28 @@ func TestTierBeatsScore(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func TestDescriptionWordsAreNotCards(t *testing.T) {
+	augs := []meta.Augment{
+		{ID: 1, Name: "Upgrade Zhonya's", Tier: 4, Score: 82.5},
+		{ID: 2, Name: "First-Aid Kit", Tier: 1},
+		{ID: 3, Name: "ADAPt", Tier: 1},
+		{ID: 4, Name: "POWER", Tier: 3, Score: 75},
+	}
+	at := func(x, y float64, s ...string) OCRLine {
+		l := words(x, s...)
+		for i := range l {
+			l[i].Y, l[i].H = y, 0.08
+		}
+		return l
+	}
+	// ADAPt was misread, and a description line was split so "Power" stands alone.
+	lines := []OCRLine{
+		at(0.10, 0.40, "Upgrade", "Zhonya's"), at(0.42, 0.40, "First-Aid", "Kit"), at(0.75, 0.41, "ADAP1"),
+		at(0.62, 0.62, "Power"),
+	}
+	cards := RateCards(lines, augs)
+	if len(cards) != 2 || cards[0].Name != "Upgrade Zhonya's" || cards[1].Name != "First-Aid Kit" {
+		t.Fatalf("the description word must not become a card: %+v", cards)
+	}
+}

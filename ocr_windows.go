@@ -10,6 +10,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"image"
+	"math"
 	"runtime"
 	"sync"
 	"syscall"
@@ -17,6 +19,8 @@ import (
 	"unsafe"
 
 	"counterbuild/app"
+
+	xdraw "golang.org/x/image/draw"
 )
 
 var (
@@ -72,12 +76,14 @@ const (
 	slotAsyncStatus     = 7 // IAsyncInfo.get_Status
 	slotAsyncGetResults = 8 // IAsyncOperation<T>.GetResults
 
-	slotResultLines = 6 // IOcrResult.get_Lines
-	slotVectorGetAt = 6 // IVectorView<T>.GetAt
-	slotVectorSize  = 7 // IVectorView<T>.get_Size
-	slotLineWords   = 6 // IOcrLine.get_Words
-	slotWordRect    = 6 // IOcrWord.get_BoundingRect
-	slotWordText    = 7 // IOcrWord.get_Text
+	slotResultLines     = 6 // IOcrResult.get_Lines
+	slotResultTextAngle = 7 // IOcrResult.get_TextAngle (IReference<double>, may be null)
+	slotReferenceValue  = 6 // IReference<T>.get_Value
+	slotVectorGetAt     = 6 // IVectorView<T>.GetAt
+	slotVectorSize      = 7 // IVectorView<T>.get_Size
+	slotLineWords       = 6 // IOcrLine.get_Words
+	slotWordRect        = 6 // IOcrWord.get_BoundingRect
+	slotWordText        = 7 // IOcrWord.get_Text
 
 	pixelFormatBgra8 = 87
 	bufferModeWrite  = 2
@@ -157,8 +163,8 @@ func activationFactory(class string, iid *guid) (unsafe.Pointer, error) {
 }
 
 type ocrWord struct {
-	text string
-	x, w float32
+	text       string
+	x, y, w, h float32
 }
 
 type ocrReq struct {
@@ -355,6 +361,15 @@ func recognize(eng, fac unsafe.Pointer, pix []byte, w, h int) ([][]ocrWord, erro
 		return nil, fmt.Errorf("OCR results: %v", err)
 	}
 	defer release(res)
+	// Word positions are given as if the image had been turned so the text
+	// is level; OCR sometimes sees a small tilt in level text, so turn them
+	// back, or words on one line get different heights across the screen.
+	var angle float64
+	var angleRef unsafe.Pointer
+	if vcall(res, slotResultTextAngle, uintptr(unsafe.Pointer(&angleRef))) == nil && angleRef != nil {
+		vcall(angleRef, slotReferenceValue, uintptr(unsafe.Pointer(&angle)))
+		release(angleRef)
+	}
 	var linesV unsafe.Pointer
 	if err := vcall(res, slotResultLines, uintptr(unsafe.Pointer(&linesV))); err != nil {
 		return nil, err
@@ -378,7 +393,8 @@ func recognize(eng, fac unsafe.Pointer, pix []byte, w, h int) ([][]ocrWord, erro
 				vcall(word, slotWordRect, uintptr(unsafe.Pointer(&rect)))
 				var hs uintptr
 				vcall(word, slotWordText, uintptr(unsafe.Pointer(&hs)))
-				words = append(words, ocrWord{text: hstringText(hs), x: rect[0], w: rect[2]})
+				x, y := unrotate(float64(rect[0]+rect[2]/2), float64(rect[1]+rect[3]/2), float64(w), float64(h), angle)
+				words = append(words, ocrWord{text: hstringText(hs), x: float32(x) - rect[2]/2, y: float32(y) - rect[3]/2, w: rect[2], h: rect[3]})
 				pWindowsDeleteString.Call(hs)
 				release(word)
 			}
@@ -388,6 +404,17 @@ func recognize(eng, fac unsafe.Pointer, pix []byte, w, h int) ([][]ocrWord, erro
 		release(line)
 	}
 	return out, nil
+}
+
+// unrotate turns a point given for the image turned by angle degrees (OCR's
+// TextAngle) back to the image as captured, around the image center.
+func unrotate(x, y, w, h, angle float64) (float64, float64) {
+	if angle == 0 {
+		return x, y
+	}
+	s, c := math.Sincos(angle * math.Pi / 180)
+	dx, dy := x-w/2, y-h/2
+	return w/2 + dx*c - dy*s, h/2 + dx*s + dy*c
 }
 
 func vectorSize(v unsafe.Pointer) uint32 {
@@ -470,28 +497,53 @@ func augmentReader(logf func(string, ...any)) app.ScreenReader {
 			return nil, err
 		}
 		aw, ah := int(area.right-area.left), int(area.bottom-area.top)
-		x, y := int(area.left)+aw*12/100, int(area.top)+ah*18/100
-		w, h := aw*76/100, ah*62/100
+		x, y, w, h := titleStrip(int(area.left), int(area.top), aw, ah)
 		pix, err := captureScreen(x, y, w, h)
 		if err != nil {
 			return nil, err
 		}
 		maskOverlay(pix, x, y, w, h)
+		if ah > 1100 {
+			pix, w, h = downscale(pix, w, h, 1080/float64(ah))
+		}
 		raw, err := eng.read(pix, w, h)
 		if err != nil {
 			return nil, err
 		}
-		return toLines(raw, w), nil
+		return toLines(raw, w, h), nil
 	}
 }
 
+// titleStrip is the part of the game window the card titles are in: the
+// middle 76% of the width, from 28% to 54% of the height (the titles sit at
+// about 41%). Reading only this strip roughly halves the OCR work.
+func titleStrip(left, top, w, h int) (x, y, sw, sh int) {
+	return left + w*12/100, top + h*28/100, w * 76 / 100, h * 26 / 100
+}
+
+// downscale shrinks a BGRA capture by f, so screens taller than 1080p cost no
+// more to read than 1080p. The text stays as big as on a 1080p screen, which
+// OCR reads reliably (smaller than that, short names get misread).
+func downscale(pix []byte, w, h int, f float64) ([]byte, int, int) {
+	nw, nh := int(float64(w)*f), int(float64(h)*f)
+	if nw < 1 || nh < 1 {
+		return pix, w, h
+	}
+	src := &image.RGBA{Pix: pix, Stride: w * 4, Rect: image.Rect(0, 0, w, h)}
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), xdraw.Src, nil)
+	return dst.Pix, nw, nh
+}
+
 // toLines converts OCR output to resolution-independent lines.
-func toLines(raw [][]ocrWord, w int) []app.OCRLine {
+func toLines(raw [][]ocrWord, w, h int) []app.OCRLine {
 	lines := make([]app.OCRLine, 0, len(raw))
 	for _, l := range raw {
 		var line app.OCRLine
 		for _, wd := range l {
-			line = append(line, app.OCRWord{Text: wd.text, X: float64(wd.x) / float64(w), W: float64(wd.w) / float64(w)})
+			line = append(line, app.OCRWord{Text: wd.text,
+				X: float64(wd.x) / float64(w), W: float64(wd.w) / float64(w),
+				Y: float64(wd.y+wd.h/2) / float64(h), H: float64(wd.h) / float64(h)})
 		}
 		lines = append(lines, line)
 	}

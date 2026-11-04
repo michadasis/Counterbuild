@@ -11,10 +11,13 @@ import (
 )
 
 // OCRWord is one word read from a screen capture. X and W are its left edge
-// and width as fractions of the capture width, so it works at any resolution.
+// and width as fractions of the capture width, Y and H its vertical center
+// and height as fractions of the capture height, so it works at any
+// resolution.
 type OCRWord struct {
 	Text string
 	X, W float64
+	Y, H float64
 }
 
 // OCRLine is one line of recognized text.
@@ -75,9 +78,10 @@ func similarity(a, b string) float64 {
 const maxWordGap = 0.03
 
 type cardMatch struct {
-	aug meta.Augment
-	x   float64
-	sim float64
+	aug  meta.Augment
+	x    float64
+	y, h float64 // vertical center and height of the name
+	sim  float64
 }
 
 // matchCards finds the augment names among the recognized lines.
@@ -105,9 +109,10 @@ func matchCards(lines []OCRLine, augs []meta.Augment) []cardMatch {
 	sort.SliceStable(names, func(i, j int) bool { return len(names[i].flat) > len(names[j].flat) })
 
 	type normLine struct {
-		words []string
-		xs    []float64
-		used  []bool
+		words  []string
+		xs     []float64
+		ys, hs []float64
+		used   []bool
 	}
 	var nls []normLine
 	for _, l := range lines {
@@ -121,6 +126,8 @@ func matchCards(lines []OCRLine, augs []meta.Augment) []cardMatch {
 			for _, part := range normWords(w.Text) {
 				nl.words = append(nl.words, part)
 				nl.xs = append(nl.xs, w.X)
+				nl.ys = append(nl.ys, w.Y)
+				nl.hs = append(nl.hs, w.H)
 			}
 		}
 		if len(nl.words) > 0 {
@@ -163,7 +170,7 @@ func matchCards(lines []OCRLine, augs []meta.Augment) []cardMatch {
 		for i := bs; i < bs+bk; i++ {
 			nls[bl].used[i] = true
 		}
-		out = append(out, cardMatch{aug: n.aug, x: nls[bl].xs[bs], sim: best})
+		out = append(out, cardMatch{aug: n.aug, x: nls[bl].xs[bs], y: nls[bl].ys[bs], h: nls[bl].hs[bs], sim: best})
 	}
 	return out
 }
@@ -174,10 +181,42 @@ func RateCards(lines []OCRLine, augs []meta.Augment) []engine.AugmentCard {
 	return offerFrom(matchCards(lines, augs))
 }
 
+// sameRow reports whether two names sit on the same line of the screen.
+func sameRow(a, b cardMatch) bool {
+	tol := 0.6 * math.Max(a.h, b.h)
+	if tol == 0 {
+		return a.y == b.y // no positions (tests)
+	}
+	return math.Abs(a.y-b.y) <= tol
+}
+
+// titleRow keeps the names on the row with the most of them. Card titles sit
+// side by side on one row; a short augment name read from a card's
+// description ("Power" for POWER) sits on another one.
+func titleRow(found []cardMatch) []cardMatch {
+	var best []cardMatch
+	bestSim := 0.0
+	for _, a := range found {
+		var row []cardMatch
+		sim := 0.0
+		for _, b := range found {
+			if sameRow(a, b) {
+				row = append(row, b)
+				sim += b.sim
+			}
+		}
+		if len(row) > len(best) || len(row) == len(best) && sim > bestSim {
+			best, bestSim = row, sim
+		}
+	}
+	return best
+}
+
 // offerFrom turns matches into the cards on screen, or nil when the text
-// doesn't look like an augment choice (fewer than two names spread across the
-// screen).
+// doesn't look like an augment choice (fewer than two names side by side on
+// one row).
 func offerFrom(found []cardMatch) []engine.AugmentCard {
+	found = titleRow(found)
 	if len(found) < 2 {
 		return nil
 	}
