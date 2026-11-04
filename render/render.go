@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"counterbuild/engine"
@@ -59,10 +60,39 @@ type faceKey struct {
 	px     int
 }
 
-// Renderer caches fonts and faces.
+// Renderer caches fonts, faces and scaled icons.
 type Renderer struct {
 	fonts map[int]*opentype.Font // 0 regular, 1 semibold, 2 bold
 	faces map[faceKey]font.Face
+	icons map[iconKey]*image.RGBA
+}
+
+// iconKey is an icon image at a size. Holding the image in the key keeps it
+// alive, so its identity can't be reused by another image.
+type iconKey struct {
+	src  image.Image
+	w, h int
+}
+
+// scaled returns src scaled to w x h, reusing earlier results: scaling the
+// icons with a high-quality filter was about half the cost of a redraw.
+func (r *Renderer) scaled(src image.Image, w, h int) *image.RGBA {
+	cacheable := reflect.ValueOf(src).Kind() == reflect.Pointer // comparable as a map key
+	k := iconKey{src, w, h}
+	if cacheable {
+		if img, ok := r.icons[k]; ok {
+			return img
+		}
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	xdraw.CatmullRom.Scale(img, img.Bounds(), src, src.Bounds(), xdraw.Src, nil)
+	if cacheable {
+		if len(r.icons) >= 256 {
+			clear(r.icons)
+		}
+		r.icons[k] = img
+	}
+	return img
 }
 
 const (
@@ -73,7 +103,7 @@ const (
 
 // NewRenderer loads Segoe UI when available (Windows) and falls back to the embedded Go fonts.
 func NewRenderer(fontDirs ...string) *Renderer {
-	r := &Renderer{fonts: map[int]*opentype.Font{}, faces: map[faceKey]font.Face{}}
+	r := &Renderer{fonts: map[int]*opentype.Font{}, faces: map[faceKey]font.Face{}, icons: map[iconKey]*image.RGBA{}}
 	try := func(w int, names ...string) {
 		for _, d := range fontDirs {
 			for _, n := range names {
@@ -319,8 +349,8 @@ func (c *canvas) icon(src image.Image, x, y, sz float64, border color.NRGBA, bw 
 	c.fillRRect(x, y, sz, sz, 3, cSlot)
 	if src != nil {
 		dr := image.Rect(c.px(x), c.px(y), c.px(x+sz), c.px(y+sz))
-		tmp := image.NewRGBA(dr)
-		xdraw.CatmullRom.Scale(tmp, dr, src, src.Bounds(), xdraw.Src, nil)
+		sc := c.r.scaled(src, dr.Dx(), dr.Dy())
+		tmp := &image.RGBA{Pix: sc.Pix, Stride: sc.Stride, Rect: dr} // the scaled icon, placed at dr
 		// Apply opacity and rounded corners while copying.
 		x0, y0, x1, y1 := float64(dr.Min.X), float64(dr.Min.Y), float64(dr.Max.X), float64(dr.Max.Y)
 		for py := dr.Min.Y; py < dr.Max.Y; py++ {
