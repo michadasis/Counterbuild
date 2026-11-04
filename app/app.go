@@ -277,7 +277,7 @@ func modeName(gameMode string, mapNumber int) string {
 }
 
 const (
-	scanIdle  = 2 * time.Second         // how often to look for augment cards in Mayhem
+	scanIdle  = 3 * time.Second         // how often to look for augment cards in Mayhem
 	scanOffer = time.Second             // while cards are showing, to follow rerolls
 	offerHold = 2500 * time.Millisecond // keep showing an offer this long after the last read
 )
@@ -306,9 +306,9 @@ func (a *App) augmentOffer(augs []meta.Augment) []engine.AugmentCard {
 	return nil
 }
 
-// scanInterval is how long to wait between screen reads: a capture and OCR
-// cost about 80 ms, so the screen is read every 2 seconds, and every second
-// while augment cards are showing. Call with augMu held.
+// scanInterval is how long to wait between screen reads: every 3 seconds,
+// and every second while augment cards are showing (to follow rerolls).
+// Call with augMu held.
 func (a *App) scanInterval() time.Duration {
 	if time.Since(a.offerAt) < offerHold {
 		return scanOffer
