@@ -5,7 +5,7 @@
 A tiny click-through overlay for League of Legends that reads your live game and tells you what to build next against the enemy team you are actually facing.
 
 - One 7 MB `.exe`. No installer, no Overwolf, no Electron, no runtime to install.
-- About 20 to 30 MB of RAM and well under 1% CPU (one poll and a redraw of a few milliseconds per second). In ARAM Mayhem, reading the augment cards adds about 80 ms of work every 2 seconds, a few percent of one CPU core.
+- About 20 to 30 MB of RAM and well under 1% CPU: one poll and a redraw of about 3 ms a second. In ARAM Mayhem, reading the augment cards adds about 30 ms of work every 3 seconds. It runs below normal priority in Windows' efficiency mode, so the game always gets the CPU first.
 - Updates itself to the current patch from Riot's Data Dragon.
 - Starts from what players actually build on your champion and role (OP.GG stats), then adapts it to your game.
 
@@ -54,7 +54,7 @@ The panel is click-through and never takes focus, so it cannot get in the way of
 - **Boots**: shown when you have no upgraded boots yet.
 - **Buy now / Next component**: what to buy at your next back.
 - **Anti-heal now / Cleanse now**: a cheap counter when the enemy team calls for it.
-- **Augment pick** (ARAM Mayhem): the augment cards on screen, left to right, with OP.GG's tier for your champion. *Take* is the best card (the better tier, then OP.GG's score within a tier), *Skip* is clearly worse, *OK* is in between, *Even* means the best cards are too close to call. *Top tier* means the augment is in OP.GG's top two tiers for your champion: OP.GG's data feed only lists tiers 3 to 5, so an augment that isn't in it ranks above them. *No data* means OP.GG's data couldn't be loaded. *Few games* means OP.GG has little data on that augment. The section disappears a couple of seconds after you pick.
+- **Augment pick** (ARAM Mayhem): the augment cards on screen, left to right, with OP.GG's tier for your champion. *Take* is the best card (the better tier, then OP.GG's score within a tier), *Skip* is clearly worse, *OK* is in between, *Even* means the best cards are too close to call. *Top tier* means the augment is in OP.GG's top two tiers for your champion: OP.GG's data feed only lists tiers 3 to 5, so an augment that isn't in it ranks above them. *No data* means OP.GG's data couldn't be loaded. *Few games* means OP.GG has little data on that augment. The section appears within about 3 seconds of the cards and disappears a couple of seconds after you pick. On a very weak PC you can turn it off with *Rate augment cards* in the tray menu.
 
 ## Settings
 
