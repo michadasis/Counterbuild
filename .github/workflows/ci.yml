@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: |
+          files=$(gofmt -l $(git ls-files '*.go' | grep -v '^third_party/'))
+          if [ -n "$files" ]; then echo "Run gofmt on:"; echo "$files"; exit 1; fi
+      - run: go vet ./...
+      - run: go test ./...
+
+  release:
+    name: Release
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check the tag matches app.Version
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' app/version.go)
+          if [ "$want" != "$have" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match app.Version $have in app/version.go"
+            exit 1
+          fi
+      - name: Build Counterbuild.exe
+        run: sh build.sh
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum Counterbuild.exe > Counterbuild.exe.sha256
+          gh release create "$GITHUB_REF_NAME" Counterbuild.exe Counterbuild.exe.sha256 \
+            --title "Counterbuild ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag
