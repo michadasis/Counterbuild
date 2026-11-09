@@ -52,7 +52,7 @@ func TestMergedLineAndShortNames(t *testing.T) {
 	merged := OCRLine{{Text: "Stats!", X: 0.1, W: 0.03}, {Text: "Tooth", X: 0.45, W: 0.03}, {Text: "Fairy", X: 0.485, W: 0.03},
 		{Text: "King", X: 0.8, W: 0.025}, {Text: "Me", X: 0.83, W: 0.015}}
 	cards := offerFrom(matchCards([]OCRLine{merged}, testAugs))
-	if got := verdicts(cards); got != "[Stats!=Reroll Tooth Fairy=Reroll King Me=Reroll]" {
+	if got := verdicts(cards); got != "[Stats!=Take Tooth Fairy=Reroll King Me=Reroll]" {
 		t.Fatalf("got %v", got)
 	}
 	// A short name read wrong must not match, nor one inside a sentence.
@@ -131,6 +131,8 @@ func TestRerollAndListOrder(t *testing.T) {
 		{ID: 7, Name: "Escape Plan", Known: true, Tier: 1, Rank: 11},
 		{ID: 8, Name: "Lonely Warrior", Known: true, Tier: 1, Rank: 26},
 		{ID: 9, Name: "Leg Day", Known: true, Tier: 1, Rank: 42},
+		{ID: 10, Name: "Pinball", Known: true, Tier: 2, Rank: 52},
+		{ID: 11, Name: "Snowday", Known: true, Tier: 2, Rank: 51},
 	}
 	cases := []struct {
 		names []string
@@ -138,7 +140,10 @@ func TestRerollAndListOrder(t *testing.T) {
 	}{
 		{[]string{"Titan's Resolve", "Goliath", "Multishot"}, "[Titan's Resolve=Skip Goliath=Take Multishot=Reroll]"},
 		{[]string{"Goliath", "Armored Impact", "Titan's Resolve"}, "[Goliath=Skip Armored Impact=Take Titan's Resolve=Skip]"},
-		{[]string{"Multishot", "Overloaded", "Upgrade Zhonya's"}, "[Multishot=Reroll Overloaded=Reroll Upgrade Zhonya's=Reroll]"},
+		// No S or A card: the highest in the list is still the one to take.
+		{[]string{"Multishot", "Overloaded", "Upgrade Zhonya's"}, "[Multishot=Take Overloaded=Reroll Upgrade Zhonya's=Reroll]"},
+		{[]string{"Pinball", "Multishot"}, "[Pinball=Reroll Multishot=Take]"},
+		{[]string{"Pinball", "Snowday", "Multishot"}, "[Pinball=Reroll Snowday=Reroll Multishot=Take]"},
 		{[]string{"Overloaded", "Titan's Resolve", "Upgrade Zhonya's"}, "[Overloaded=Reroll Titan's Resolve=Take Upgrade Zhonya's=Reroll]"},
 		// Three A cards: the bottom, the middle and the top of the A list.
 		{[]string{"Leg Day", "Lonely Warrior", "Escape Plan"}, "[Leg Day=Skip Lonely Warrior=Skip Escape Plan=Take]"},
