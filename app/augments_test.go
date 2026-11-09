@@ -42,7 +42,7 @@ func TestMatchCardsWithOCRMistakes(t *testing.T) {
 		words(0.40, "Gain", "gold", "and", "stats"), // description text
 	}
 	cards := offerFrom(matchCards(lines, testAugs))
-	if got := verdicts(cards); got != "[Hand of Baron=Take King Me=Reroll Stats on Stats on Stats!=Skip]" {
+	if got := verdicts(cards); got != "[Hand of Baron=Take King Me=Reroll Stats on Stats on Stats!=Reroll]" {
 		t.Fatalf("got %v", got)
 	}
 }
@@ -71,7 +71,7 @@ func TestTightlySpacedTitles(t *testing.T) {
 		{ID: 4, Name: "Titan's Resolve", Known: true, Tier: 1, Rank: 13},
 	}
 	lines := []OCRLine{words(0.1, "TankEngine"), words(0.4, "TankItOr", "LeaveIt"), words(0.7, "Titan's", "Reso", "lve")}
-	if got := verdicts(RateCards(lines, augs)); got != "[Tank Engine=Take Tank It Or Leave It=Reroll Titan's Resolve=Skip]" {
+	if got := verdicts(RateCards(lines, augs)); got != "[Tank Engine=Take Tank It Or Leave It=Reroll Titan's Resolve=Reroll]" {
 		t.Fatalf("got %v", got)
 	}
 }
@@ -138,15 +138,15 @@ func TestRerollAndListOrder(t *testing.T) {
 		names []string
 		want  string
 	}{
-		{[]string{"Titan's Resolve", "Goliath", "Multishot"}, "[Titan's Resolve=Skip Goliath=Take Multishot=Reroll]"},
-		{[]string{"Goliath", "Armored Impact", "Titan's Resolve"}, "[Goliath=Skip Armored Impact=Take Titan's Resolve=Skip]"},
+		{[]string{"Titan's Resolve", "Goliath", "Multishot"}, "[Titan's Resolve=Reroll Goliath=Take Multishot=Reroll]"},
+		{[]string{"Goliath", "Armored Impact", "Titan's Resolve"}, "[Goliath=Reroll Armored Impact=Take Titan's Resolve=Reroll]"},
 		// No S or A card: the highest in the list is still the one to take.
 		{[]string{"Multishot", "Overloaded", "Upgrade Zhonya's"}, "[Multishot=Take Overloaded=Reroll Upgrade Zhonya's=Reroll]"},
 		{[]string{"Pinball", "Multishot"}, "[Pinball=Reroll Multishot=Take]"},
 		{[]string{"Pinball", "Snowday", "Multishot"}, "[Pinball=Reroll Snowday=Reroll Multishot=Take]"},
 		{[]string{"Overloaded", "Titan's Resolve", "Upgrade Zhonya's"}, "[Overloaded=Reroll Titan's Resolve=Take Upgrade Zhonya's=Reroll]"},
 		// Three A cards: the bottom, the middle and the top of the A list.
-		{[]string{"Leg Day", "Lonely Warrior", "Escape Plan"}, "[Leg Day=Skip Lonely Warrior=Skip Escape Plan=Take]"},
+		{[]string{"Leg Day", "Lonely Warrior", "Escape Plan"}, "[Leg Day=Reroll Lonely Warrior=Reroll Escape Plan=Take]"},
 	}
 	for _, c := range cases {
 		var lines []OCRLine

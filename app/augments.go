@@ -239,9 +239,6 @@ func offerFrom(found []cardMatch) []engine.AugmentCard {
 	return cards
 }
 
-// rerollTier is the first tier worth rerolling: B (2) and everything below.
-const rerollTier = 2
-
 // compareCards is 1 if a is the better pick, -1 if b is, 0 if they can't be
 // told apart: the better OP.GG tier wins, then the place in OP.GG's list for
 // the champion. Cards guessed to be somewhere in S to B (the data feed
@@ -271,9 +268,9 @@ func compareCards(a, b engine.AugmentCard) int {
 
 // rateCards compares the cards on screen with each other. The one highest in
 // OP.GG's list for the champion says Take, whatever its tier, so there is
-// always a card to take even when all three are B. The others say Skip, or
-// Reroll when they are B tier or below (each card can be rerolled on its own;
-// with no rerolls left, it means skip). Cards that can't be told apart from
+// always a card to take even when all three are B. The others say Reroll:
+// not this one (each card can be rerolled on its own; with no rerolls left,
+// just take the Take card). Cards that can't be told apart from
 // the best one (only the data feed, no list) say Even. Cards OP.GG has no
 // data for say "?".
 func rateCards(cards []engine.AugmentCard) {
@@ -304,10 +301,8 @@ func rateCards(cards []engine.AugmentCard) {
 			c.Verdict = "Take"
 		case compareCards(*c, cards[best]) == 0:
 			c.Verdict = "Even"
-		case !c.Top && c.Tier >= rerollTier:
-			c.Verdict = "Reroll"
 		default:
-			c.Verdict = "Skip"
+			c.Verdict = "Reroll"
 		}
 	}
 }
