@@ -1,4 +1,4 @@
 package app
 
 // Version is the app version shown in the tray menu and sent as the user agent.
-const Version = "1.4.0"
+const Version = "1.4.1"
