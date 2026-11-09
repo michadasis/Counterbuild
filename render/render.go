@@ -381,6 +381,27 @@ func (c *canvas) icon(src image.Image, x, y, sz float64, border color.NRGBA, bw 
 	}
 }
 
+// augmentTier is the right-hand label of an augment card: OP.GG's tier
+// letter and the card's place in OP.GG's list for the champion ("A · #12").
+// OP.GG's tiers below B all mean reroll, so they share one label.
+func augmentTier(a engine.AugmentCard) string {
+	var t string
+	switch {
+	case a.NoData:
+		return "no data"
+	case a.Top:
+		return "S to B tier"
+	case a.Tier < 3:
+		t = []string{"S", "A", "B"}[max(a.Tier, 0)]
+	default:
+		t = "below B"
+	}
+	if a.Rank > 0 {
+		return fmt.Sprintf("%s · #%d", t, a.Rank)
+	}
+	return t + " tier"
+}
+
 func gold(n int) string {
 	s := fmt.Sprintf("%d", n)
 	if n < 0 {
@@ -534,24 +555,14 @@ func (r *Renderer) Render(res *engine.Result, ic Icons, st Style) *image.RGBA {
 			case "Take":
 				vc = cTeal
 				c.fillRRect(pad-6, y-2, inner+12, 22, 5, cRowHi)
-			case "Skip":
+			case "Reroll":
 				vc = cWarn
 			}
 			c.text(strings.ToUpper(a.Verdict), pad, y+13, wBold, 9.5, vc, 0.8)
-			var score string
-			switch {
-			case a.NoData:
-				score = "no data"
-			case a.Tier <= 2:
-				score = "top tier"
-			case a.FewGames:
-				score = fmt.Sprintf("tier %d · few games", a.Tier)
-			default:
-				score = fmt.Sprintf("tier %d · %.1f", a.Tier, a.Score)
-			}
+			score := augmentTier(a)
 			sw := c.measure(score, wSemi, 11)
 			c.text(score, panelW-pad-sw, y+13, wSemi, 11, cMuted, 0)
-			tx := pad + 42
+			tx := pad + 54
 			c.text(c.fit(a.Name, wSemi, 12.5, panelW-pad-sw-8-tx), tx, y+13, wSemi, 12.5, cLight, 0)
 			y += 24
 		}

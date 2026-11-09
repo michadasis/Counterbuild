@@ -59,10 +59,12 @@ type Provider struct {
 	augMem  map[string]*augCache
 	augBusy bool
 
-	// NamesURL is where the full list of augment names comes from.
-	NamesURL  string
-	names     *namesCache
-	namesBusy bool
+	// NamesURL is where the full list of augment names comes from, and
+	// AugmentPageURL where each champion's augment tiers come from.
+	NamesURL       string
+	AugmentPageURL string
+	names          *namesCache
+	namesBusy      bool
 }
 
 const (
@@ -88,7 +90,8 @@ func NewProvider(url, dir, appVersion string, logf func(string, ...any), onReady
 		retryAt: map[string]time.Time{},
 		augMem:  map[string]*augCache{},
 
-		NamesURL: DefaultNamesURL,
+		NamesURL:       DefaultNamesURL,
+		AugmentPageURL: DefaultAugmentPageURL,
 	}
 }
 

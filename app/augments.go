@@ -230,82 +230,51 @@ func offerFrom(found []cardMatch) []engine.AugmentCard {
 	}
 	cards := make([]engine.AugmentCard, len(found))
 	for i, f := range found {
-		c := engine.AugmentCard{Name: f.aug.Name, Tier: f.aug.Tier, Score: f.aug.Score}
-		switch {
-		case f.aug.Tier <= 0:
-			c.NoData, c.Verdict = true, "?"
-		case f.aug.Tier > 2:
-			c.FewGames = f.aug.Pop < 0.01
-		}
-		cards[i] = c
+		cards[i] = engine.AugmentCard{Name: f.aug.Name, Tier: f.aug.Tier, Rank: f.aug.Rank, Top: f.aug.Top,
+			NoData: !f.aug.Known && !f.aug.Top}
 	}
 	rateCards(cards)
 	return cards
 }
 
-// compareCards is 1 if a is the better pick, -1 if b is, 0 if it's too close
-// to call: a better OP.GG tier wins, and within a tier a score at least a
-// point higher.
-func compareCards(a, b engine.AugmentCard) int {
-	if a.Tier != b.Tier {
-		if a.Tier < b.Tier {
-			return 1
-		}
-		return -1
-	}
-	if a.Score > 0 && b.Score > 0 && math.Abs(a.Score-b.Score) >= 1 {
-		if a.Score > b.Score {
-			return 1
-		}
-		return -1
-	}
-	return 0
-}
+// rerollTier is the first tier worth rerolling: B (2) and everything below.
+const rerollTier = 2
 
-// rateCards marks the best card Take (or the tied best ones Even), the worst
-// one Skip when it is clearly worse (a worse tier, or 3+ points lower in the
-// same tier), and the rest OK. Cards without data keep "?".
+// rateCards gives each card a verdict. A B tier card or worse says Reroll
+// (each card can be rerolled on its own). Of the S and A cards, the one
+// highest on OP.GG's list for the champion says Take and the others OK. With
+// only the data feed (no list), cards guessed to be S to B can't be told
+// apart, so they say Even (Take when there is one). Cards OP.GG has no data
+// for say "?".
 func rateCards(cards []engine.AugmentCard) {
-	var rated []int
+	var good []int
 	for i := range cards {
-		if !cards[i].NoData {
-			rated = append(rated, i)
+		c := &cards[i]
+		switch {
+		case c.NoData:
+			c.Verdict = "?"
+		case c.Top:
+			good = append(good, i)
+		case c.Tier >= rerollTier:
+			c.Verdict = "Reroll"
+		default:
+			good = append(good, i)
 		}
 	}
-	if len(rated) < 2 {
-		for _, i := range rated {
-			cards[i].Verdict = "OK"
-		}
-		return
-	}
-	best, worst := rated[0], rated[0]
-	for _, i := range rated {
-		if compareCards(cards[i], cards[best]) > 0 {
+	best := -1
+	for _, i := range good {
+		if c := cards[i]; c.Rank > 0 && (best < 0 || c.Rank < cards[best].Rank) {
 			best = i
 		}
-		if compareCards(cards[i], cards[worst]) < 0 {
-			worst = i
-		}
 	}
-	b := cards[best]
-	tied := 0
-	for _, i := range rated {
-		if compareCards(cards[i], b) == 0 {
-			tied++
-		}
-	}
-	for _, i := range rated {
-		c := &cards[i]
-		clearlyWorse := c.Tier > b.Tier || c.Score > 0 && b.Score > 0 && b.Score-c.Score >= 3
+	for _, i := range good {
 		switch {
-		case compareCards(*c, b) == 0 && tied == 1:
-			c.Verdict = "Take"
-		case compareCards(*c, b) == 0:
-			c.Verdict = "Even"
-		case compareCards(*c, cards[worst]) == 0 && clearlyWorse:
-			c.Verdict = "Skip"
+		case len(good) == 1 || i == best:
+			cards[i].Verdict = "Take"
+		case best < 0:
+			cards[i].Verdict = "Even"
 		default:
-			c.Verdict = "OK"
+			cards[i].Verdict = "OK"
 		}
 	}
 }

@@ -3,6 +3,7 @@ package meta
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -49,7 +50,8 @@ func TestFetchAugments(t *testing.T) {
 	dir := t.TempDir()
 	ready := make(chan struct{}, 1)
 	p := NewProvider(srv.URL, dir, "test", nil, func() { ready <- struct{}{} })
-	if p.Augments(81, "16.21.1") != nil {
+	p.AugmentPageURL = srv.URL + "/no-such-page/%s" // the page fails: fall back to the data feed
+	if p.Augments(81, "Ezreal", "16.21.1") != nil {
 		t.Fatalf("expected nothing before the first fetch")
 	}
 	select {
@@ -57,8 +59,8 @@ func TestFetchAugments(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatalf("fetch did not finish")
 	}
-	augs := p.Augments(81, "16.21.1")
-	if len(augs) != 6 {
+	augs := p.Augments(81, "Ezreal", "16.21.1")
+	if len(augs) != 6 || !augs[0].Known || augs[0].Rank != 0 {
 		t.Fatalf("got %+v", augs)
 	}
 	call := f.calls[0]
@@ -67,7 +69,7 @@ func TestFetchAugments(t *testing.T) {
 	}
 	// Cached on disk for the next run.
 	p2 := NewProvider("http://127.0.0.1:1", dir, "test", nil, nil)
-	if got := p2.Augments(81, "16.21.1"); len(got) != 6 {
+	if got := p2.Augments(81, "Ezreal", "16.21.1"); len(got) != 6 {
 		t.Fatalf("disk cache not used: %+v", got)
 	}
 }
@@ -92,12 +94,19 @@ func TestParseAugmentNamesAndMerge(t *testing.T) {
 	if byID[1037].Score != 0 || byID[7777].Name != "Only On OPGG" {
 		t.Fatalf("unexpected merge: %+v", merged)
 	}
-	if byID[1037].Tier != 1 || byID[1250].Tier != 0 {
-		t.Fatalf("augments missing from OP.GG's list are in its top tiers: %+v", merged)
+	if !byID[1037].Top || byID[1250].Top {
+		t.Fatalf("augments missing from OP.GG's data feed are S to B: %+v", merged)
 	}
 	for _, a := range MergeAugments(nil, names) {
-		if a.Tier != 0 {
+		if a.Top || a.Known {
 			t.Fatalf("without OP.GG data nothing is known about tiers: %+v", a)
+		}
+	}
+	// With the augment page, which lists every tier, a missing augment is unknown.
+	page := []Augment{{ID: 1250, Known: true, Tier: 0, Rank: 1}}
+	for _, a := range MergeAugments(page, names) {
+		if a.ID != 1250 && (a.Top || a.Known) {
+			t.Fatalf("an augment missing from the page is unknown: %+v", a)
 		}
 	}
 }
@@ -126,5 +135,54 @@ func TestFetchAugmentNames(t *testing.T) {
 	p2.NamesURL = "http://127.0.0.1:1"
 	if n := p2.AugmentNames(); len(n) != 2 {
 		t.Fatalf("disk cache not used: %v", n)
+	}
+}
+
+// TestAugmentPage reads an excerpt of OP.GG's real ARAM Mayhem augment page
+// for Braum: its S tier first (Armored Impact, Tank Engine), down to tier 5.
+func TestAugmentPage(t *testing.T) {
+	b, err := os.ReadFile("testdata/opgg_braum_augments.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	augs := parseAugmentPage(b)
+	if len(augs) != 55 {
+		t.Fatalf("got %d augments", len(augs))
+	}
+	if a := augs[0]; a.ID != 3049 || a.Tier != 0 || a.Rank != 1 || !a.Known || a.Score != 85.85 || a.Pop != 0.0512 {
+		t.Fatalf("Armored Impact: %+v", a)
+	}
+	if a := augs[1]; a.ID != 1353 || a.Tier != 0 || a.Rank != 2 {
+		t.Fatalf("Tank Engine: %+v", a)
+	}
+	for i := 1; i < len(augs); i++ {
+		if augs[i].Tier < augs[i-1].Tier || augs[i].Rank != i+1 {
+			t.Fatalf("not in page order at %d: %+v", i, augs[i])
+		}
+	}
+	if augs[len(augs)-1].Tier != 5 {
+		t.Fatalf("expected the last rows to be tier 5")
+	}
+
+	// Fetched from the page, the data feed isn't asked.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/braum" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write(b)
+	}))
+	defer srv.Close()
+	ready := make(chan struct{}, 1)
+	p := NewProvider("http://127.0.0.1:1", t.TempDir(), "test", nil, func() { ready <- struct{}{} })
+	p.AugmentPageURL = srv.URL + "/%s"
+	p.Augments(201, "Braum", "16.22.1")
+	select {
+	case <-ready:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("fetch did not finish")
+	}
+	if got := p.Augments(201, "Braum", "16.22.1"); len(got) != 55 || got[0].Rank != 1 {
+		t.Fatalf("got %d augments", len(got))
 	}
 }

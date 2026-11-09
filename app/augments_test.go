@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"testing"
 
+	"counterbuild/engine"
 	"counterbuild/meta"
 )
 
+// testAugs are page data: OP.GG's tier (0 = S, 1 = A, 2 = B) and place in its list.
 var testAugs = []meta.Augment{
-	{ID: 1, Name: "Stats on Stats on Stats!", Tier: 4, Score: 81.4, Pop: 0.15},
-	{ID: 2, Name: "Stats!", Tier: 4, Score: 76.7, Pop: 0.13},
-	{ID: 3, Name: "King Me", Tier: 4, Score: 58.6, Pop: 0.10},
-	{ID: 4, Name: "Hand of Baron", Tier: 4, Score: 87.0, Pop: 0.10},
-	{ID: 5, Name: "Tooth Fairy", Tier: 5, Score: 88.3, Pop: 0.005},
-	{ID: 6, Name: "", Tier: 5, Score: 99, Pop: 0},
+	{ID: 1, Name: "Stats on Stats on Stats!", Known: true, Tier: 1, Rank: 20},
+	{ID: 2, Name: "Stats!", Known: true, Tier: 2, Rank: 45},
+	{ID: 3, Name: "King Me", Known: true, Tier: 4, Rank: 120},
+	{ID: 4, Name: "Hand of Baron", Known: true, Tier: 0, Rank: 3},
+	{ID: 5, Name: "Tooth Fairy", Known: true, Tier: 5, Rank: 170},
+	{ID: 6, Name: "", Known: true, Tier: 5, Rank: 180},
 }
 
 func words(x float64, s ...string) OCRLine {
@@ -24,6 +26,14 @@ func words(x float64, s ...string) OCRLine {
 	return l
 }
 
+func verdicts(cards []engine.AugmentCard) string {
+	var v []string
+	for _, c := range cards {
+		v = append(v, c.Name+"="+c.Verdict)
+	}
+	return fmt.Sprint(v)
+}
+
 func TestMatchCardsWithOCRMistakes(t *testing.T) {
 	lines := []OCRLine{
 		words(0.05, "Hand", "of", "Baran"), // one wrong letter
@@ -32,14 +42,8 @@ func TestMatchCardsWithOCRMistakes(t *testing.T) {
 		words(0.40, "Gain", "gold", "and", "stats"), // description text
 	}
 	cards := offerFrom(matchCards(lines, testAugs))
-	if len(cards) != 3 {
-		t.Fatalf("expected 3 cards, got %+v", cards)
-	}
-	want := []struct{ name, verdict string }{{"Hand of Baron", "Take"}, {"King Me", "Skip"}, {"Stats on Stats on Stats!", "OK"}}
-	for i, w := range want {
-		if cards[i].Name != w.name || cards[i].Verdict != w.verdict {
-			t.Fatalf("card %d: got %+v, want %v", i, cards[i], w)
-		}
+	if got := verdicts(cards); got != "[Hand of Baron=Take King Me=Reroll Stats on Stats on Stats!=OK]" {
+		t.Fatalf("got %v", got)
 	}
 }
 
@@ -48,8 +52,8 @@ func TestMergedLineAndShortNames(t *testing.T) {
 	merged := OCRLine{{Text: "Stats!", X: 0.1, W: 0.03}, {Text: "Tooth", X: 0.45, W: 0.03}, {Text: "Fairy", X: 0.485, W: 0.03},
 		{Text: "King", X: 0.8, W: 0.025}, {Text: "Me", X: 0.83, W: 0.015}}
 	cards := offerFrom(matchCards([]OCRLine{merged}, testAugs))
-	if len(cards) != 3 || cards[0].Name != "Stats!" || cards[1].Name != "Tooth Fairy" || !cards[1].FewGames {
-		t.Fatalf("got %+v", cards)
+	if got := verdicts(cards); got != "[Stats!=Reroll Tooth Fairy=Reroll King Me=Reroll]" {
+		t.Fatalf("got %v", got)
 	}
 	// A short name read wrong must not match, nor one inside a sentence.
 	if got := matchCards([]OCRLine{words(0.1, "Stal5!"), words(0.5, "Gain", "bonus", "stats", "each", "level")}, testAugs); len(got) != 0 {
@@ -89,8 +93,8 @@ func TestAugmentMode(t *testing.T) {
 func TestCardsWithoutStats(t *testing.T) {
 	augs := append([]meta.Augment{{ID: 7, Name: "First-Aid Kit"}, {ID: 8, Name: "ADAPt"}}, testAugs...)
 	cards := RateCards([]OCRLine{words(0.1, "King", "Me"), words(0.4, "First-Aid", "Kit"), words(0.7, "Hand", "of", "Baron")}, augs)
-	if len(cards) != 3 || !cards[1].NoData || cards[1].Verdict != "?" || cards[0].Verdict != "Skip" || cards[2].Verdict != "Take" {
-		t.Fatalf("got %+v", cards)
+	if got := verdicts(cards); got != "[King Me=Reroll First-Aid Kit=? Hand of Baron=Take]" || !cards[1].NoData {
+		t.Fatalf("got %v", got)
 	}
 	// Cards without stats are still recognized, so the choice is shown.
 	cards = RateCards([]OCRLine{words(0.1, "First-Aid", "Kit"), words(0.7, "ADAPt")}, augs)
@@ -99,37 +103,53 @@ func TestCardsWithoutStats(t *testing.T) {
 	}
 }
 
-func TestTierBeatsScore(t *testing.T) {
+// TestRerollAndListOrder: B tier and below say Reroll; of the S and A cards,
+// the one highest on OP.GG's list says Take.
+func TestRerollAndListOrder(t *testing.T) {
 	augs := []meta.Augment{
-		{ID: 1, Name: "First-Aid Kit", Tier: 1}, // missing from OP.GG's list: its top tiers
-		{ID: 2, Name: "Overloaded", Tier: 3, Score: 70},
-		{ID: 3, Name: "Tooth Fairy", Tier: 5, Score: 88.3, Pop: 0.005},
-		{ID: 4, Name: "ADAPt", Tier: 1},
-		{ID: 5, Name: "Upgrade Zhonya's", Tier: 4, Score: 82.5, Pop: 0.15},
+		{ID: 1, Name: "Armored Impact", Known: true, Tier: 0, Rank: 1},
+		{ID: 2, Name: "Goliath", Known: true, Tier: 0, Rank: 6},
+		{ID: 3, Name: "Titan's Resolve", Known: true, Tier: 1, Rank: 13},
+		{ID: 4, Name: "Multishot", Known: true, Tier: 2, Rank: 46},
+		{ID: 5, Name: "Overloaded", Known: true, Tier: 3, Rank: 92},
+		{ID: 6, Name: "Upgrade Zhonya's", Known: true, Tier: 5, Rank: 138},
 	}
-	verdicts := func(lines ...OCRLine) string {
-		var v []string
-		for _, c := range RateCards(lines, augs) {
-			v = append(v, c.Name+"="+c.Verdict)
+	cases := []struct {
+		names []string
+		want  string
+	}{
+		{[]string{"Titan's Resolve", "Goliath", "Multishot"}, "[Titan's Resolve=OK Goliath=Take Multishot=Reroll]"},
+		{[]string{"Goliath", "Armored Impact", "Titan's Resolve"}, "[Goliath=OK Armored Impact=Take Titan's Resolve=OK]"},
+		{[]string{"Multishot", "Overloaded", "Upgrade Zhonya's"}, "[Multishot=Reroll Overloaded=Reroll Upgrade Zhonya's=Reroll]"},
+		{[]string{"Overloaded", "Titan's Resolve", "Upgrade Zhonya's"}, "[Overloaded=Reroll Titan's Resolve=Take Upgrade Zhonya's=Reroll]"},
+	}
+	for _, c := range cases {
+		var lines []OCRLine
+		for i, n := range c.names {
+			lines = append(lines, words(0.1+0.3*float64(i), n))
 		}
-		return fmt.Sprint(v)
+		if got := verdicts(RateCards(lines, augs)); got != c.want {
+			t.Fatalf("got %v, want %v", got, c.want)
+		}
 	}
-	// A higher score in a worse tier doesn't win.
-	if got := verdicts(words(0.1, "First-Aid", "Kit"), words(0.4, "Overloaded"), words(0.7, "Tooth", "Fairy")); got != "[First-Aid Kit=Take Overloaded=OK Tooth Fairy=Skip]" {
-		t.Fatalf("got %v", got)
-	}
-	// The real offer from the Soraka game: two top-tier cards and a tier 4 one.
-	if got := verdicts(words(0.1, "Upgrade", "Zhonya's"), words(0.4, "First-Aid", "Kit"), words(0.7, "ADAPt")); got != "[Upgrade Zhonya's=Skip First-Aid Kit=Even ADAPt=Even]" {
+
+	// With only OP.GG's data feed (no list): it has tiers 3 to 5, and
+	// augments missing from it are somewhere in S to B. The real offer from a
+	// Soraka game:
+	feed := meta.MergeAugments([]meta.Augment{{ID: 1318, Name: "Upgrade Zhonya's", Known: true, Tier: 4}},
+		map[int]string{1318: "Upgrade Zhonya's", 1037: "First-Aid Kit", 1205: "ADAPt"})
+	got := verdicts(RateCards([]OCRLine{words(0.1, "Upgrade", "Zhonya's"), words(0.4, "First-Aid", "Kit"), words(0.7, "ADAPt")}, feed))
+	if got != "[Upgrade Zhonya's=Reroll First-Aid Kit=Even ADAPt=Even]" {
 		t.Fatalf("got %v", got)
 	}
 }
 
 func TestDescriptionWordsAreNotCards(t *testing.T) {
 	augs := []meta.Augment{
-		{ID: 1, Name: "Upgrade Zhonya's", Tier: 4, Score: 82.5},
-		{ID: 2, Name: "First-Aid Kit", Tier: 1},
-		{ID: 3, Name: "ADAPt", Tier: 1},
-		{ID: 4, Name: "POWER", Tier: 3, Score: 75},
+		{ID: 1, Name: "Upgrade Zhonya's", Known: true, Tier: 4},
+		{ID: 2, Name: "First-Aid Kit", Top: true},
+		{ID: 3, Name: "ADAPt", Top: true},
+		{ID: 4, Name: "POWER", Known: true, Tier: 3},
 	}
 	at := func(x, y float64, s ...string) OCRLine {
 		l := words(x, s...)

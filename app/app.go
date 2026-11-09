@@ -202,7 +202,7 @@ func (a *App) Step() Frame {
 		return Frame{Img: a.R.Status(res.Note, style), Show: true, InGame: true}
 	}
 	if ch != nil && cfg.MetaSource != "off" && augmentMode(cfg.Augments, g.GameData.GameMode, g.GameData.MapNumber) {
-		res.Augments = a.augmentOffer(meta.MergeAugments(a.Meta.Augments(ch.Key, a.Data.Version()), a.Meta.AugmentNames()))
+		res.Augments = a.augmentOffer(meta.MergeAugments(a.Meta.Augments(ch.Key, ch.ID, a.Data.Version()), a.Meta.AugmentNames()))
 	}
 	key := fmt.Sprintf("%s|%d", res.ChampID, start.Unix()/30)
 	a.Hist.Observe(key, historyKey(res.ChampID, mode), res.Completed)

@@ -119,15 +119,16 @@ func TestRealMayhemCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	names := map[int]string{1318: "Upgrade Zhonya's", 1037: "First-Aid Kit", 1205: "ADAPt", 2138: "Adaptive Ward", 1404: "Stats!"}
-	stats := []meta.Augment{{ID: 1318, Name: "Upgrade Zhonya's", Tier: 4, Score: 82.46, Pop: 0.15}, {ID: 1404, Name: "Stats!", Tier: 4, Score: 76, Pop: 0.1}}
+	stats := []meta.Augment{{ID: 1318, Name: "Upgrade Zhonya's", Known: true, Tier: 4, Score: 82.46, Pop: 0.15}, {ID: 1404, Name: "Stats!", Known: true, Tier: 4, Score: 76, Pop: 0.1}}
 	cards := app.RateCards(toLines(raw, w, h), meta.MergeAugments(stats, names))
 	t.Logf("%+v", cards)
 	if len(cards) != 3 || cards[0].Name != "Upgrade Zhonya's" || cards[1].Name != "First-Aid Kit" || cards[2].Name != "ADAPt" {
 		t.Fatalf("expected the three cards left to right, got %+v", cards)
 	}
-	// First-Aid Kit and ADAPt aren't in OP.GG's tier 3-5 list: they are in its top tiers.
-	if cards[0].Verdict != "Skip" || cards[1].Verdict != "Even" || cards[2].Verdict != "Even" || cards[1].Tier != 1 {
-		t.Fatalf("expected Skip, then two top-tier cards, got %+v", cards)
+	// With only the data feed (tiers 3 to 5): Upgrade Zhonya's is tier 4, so
+	// reroll it; First-Aid Kit and ADAPt aren't in the feed, so they are S to B.
+	if cards[0].Verdict != "Reroll" || cards[1].Verdict != "Even" || cards[2].Verdict != "Even" || !cards[1].Top {
+		t.Fatalf("expected Reroll, then two S to B cards, got %+v", cards)
 	}
 }
 

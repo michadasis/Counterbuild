@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,9 +19,12 @@ import (
 type Augment struct {
 	ID    int     `json:"id"`
 	Name  string  `json:"name"`
-	Tier  int     `json:"tier"`  // OP.GG tier, 1 = best; see MergeAugments
+	Known bool    `json:"known"` // OP.GG has data on it for this champion
+	Tier  int     `json:"tier"`  // OP.GG tier when Known: 0 = S, 1 = A, 2 = B, 3 to 5 lower
+	Rank  int     `json:"rank"`  // place in OP.GG's list for the champion, 1 = best; 0 if unknown
 	Score float64 `json:"score"` // OP.GG performance score, higher is better
 	Pop   float64 `json:"pop"`   // how often it is picked, 0..1
+	Top   bool    `json:"-"`     // guessed to be S to B: missing from OP.GG's data feed, which leaves those out
 }
 
 type augCache struct {
@@ -144,12 +148,19 @@ func parseAugmentNames(b []byte) (map[int]string, error) {
 // MergeAugments combines the full name list with OP.GG's stats: every augment
 // gets a name (the game's own, which is what the cards show).
 //
-// OP.GG's augment tool only returns tiers 3 to 5 ("only tier 3 or higher"),
-// down to augments almost nobody picks, while its website lists the same
-// champion's tier 1 and 2 augments above them. So when OP.GG's data has
-// loaded, an augment missing from it is in OP.GG's top tiers: it gets Tier 1
-// and no score. Without OP.GG data, augments get Tier 0 (unknown).
+// Stats from OP.GG's augment page list every tier, so an augment missing from
+// them is unknown. Stats from OP.GG's data feed (the fallback) only have tiers
+// 3 to 5 ("only tier 3 or higher") while the website lists the champion's S, A
+// and B augments (tiers 0 to 2) above them, so an augment missing from the
+// feed is marked Top: somewhere in S to B.
 func MergeAugments(stats []Augment, names map[int]string) []Augment {
+	ranked := false
+	for _, a := range stats {
+		if a.Rank > 0 {
+			ranked = true
+			break
+		}
+	}
 	out := make([]Augment, 0, len(names)+len(stats))
 	seen := map[int]bool{}
 	for _, a := range stats {
@@ -164,11 +175,7 @@ func MergeAugments(stats []Augment, names map[int]string) []Augment {
 	}
 	for id, n := range names {
 		if !seen[id] {
-			a := Augment{ID: id, Name: n}
-			if len(stats) > 0 {
-				a.Tier = 1
-			}
-			out = append(out, a)
+			out = append(out, Augment{ID: id, Name: n, Top: len(stats) > 0 && !ranked})
 		}
 	}
 	return out
@@ -178,15 +185,70 @@ const augTool = "lol_list_aram_augments"
 
 var augFields = []string{"data.augments[].{id,name,tier,performance,popular}"}
 
+// DefaultAugmentPageURL is OP.GG's ARAM Mayhem augment page for a champion;
+// %s is the champion's Data Dragon id in lowercase ("monkeyking"). Its
+// robots.txt allows it; it is read once per champion per day.
+const DefaultAugmentPageURL = "https://op.gg/lol/modes/aram-mayhem/%s/augments"
+
+// reAugRow is one augment in the data embedded in OP.GG's augment page:
+// {"id":3049,"tier":0,"performance":85.85,"popular":5.12,...}, with the
+// quotes escaped inside the page's script data.
+var reAugRow = regexp.MustCompile(`\\?"id\\?":(\d+),\\?"tier\\?":(\d+),\\?"performance\\?":([\d.]+),\\?"popular\\?":([\d.]+)`)
+
+// parseAugmentPage reads the champion's augments from OP.GG's augment page in
+// the order the page lists them: by tier (S first), then by popularity.
+func parseAugmentPage(b []byte) []Augment {
+	var out []Augment
+	seen := map[int]bool{}
+	for _, m := range reAugRow.FindAllSubmatch(b, -1) {
+		id, _ := strconv.Atoi(string(m[1]))
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		tier, _ := strconv.Atoi(string(m[2]))
+		perf, _ := strconv.ParseFloat(string(m[3]), 64)
+		pop, _ := strconv.ParseFloat(string(m[4]), 64)
+		out = append(out, Augment{ID: id, Known: true, Tier: tier, Rank: len(out) + 1, Score: perf, Pop: pop / 100})
+	}
+	return out
+}
+
+func (p *Provider) augmentPage(ctx context.Context, champID string) ([]Augment, error) {
+	url := fmt.Sprintf(p.AugmentPageURL, strings.ToLower(champID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", p.agent)
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return nil, err
+	}
+	augs := parseAugmentPage(b)
+	if len(augs) < 30 {
+		return nil, fmt.Errorf("no augment list on %s (found %d)", url, len(augs))
+	}
+	return augs, nil
+}
+
 func (p *Provider) augPath(version string, champKey int) string {
-	return filepath.Join(p.dir, "opgg", version, fmt.Sprintf("augments_%d.json", champKey))
+	return filepath.Join(p.dir, "opgg", version, fmt.Sprintf("augment_tiers_%d.json", champKey))
 }
 
 // Augments returns the cached augment stats for a champion (by its numeric
-// Data Dragon key), or nil until they have loaded. Like Lookup it never blocks:
-// a missing or day-old cache is refreshed in the background.
-func (p *Provider) Augments(champKey int, version string) []Augment {
-	if champKey <= 0 || version == "" {
+// Data Dragon key and its id), or nil until they have loaded. Like Lookup it
+// never blocks: a missing or day-old cache is refreshed in the background.
+func (p *Provider) Augments(champKey int, champID, version string) []Augment {
+	if champKey <= 0 || champID == "" || version == "" {
 		return nil
 	}
 	k := fmt.Sprintf("%s/augments/%d", version, champKey)
@@ -208,7 +270,7 @@ func (p *Provider) Augments(champKey int, version string) []Augment {
 	}
 	p.mu.Unlock()
 	if start {
-		go p.fetchAugments(champKey, version, k)
+		go p.fetchAugments(champKey, champID, version, k)
 	}
 	if c == nil {
 		return nil
@@ -216,7 +278,7 @@ func (p *Provider) Augments(champKey int, version string) []Augment {
 	return c.Augs
 }
 
-func (p *Provider) fetchAugments(champKey int, version, k string) {
+func (p *Provider) fetchAugments(champKey int, champID, version, k string) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			p.logf("OP.GG augments: fetch crashed: %v", rec)
@@ -227,9 +289,17 @@ func (p *Provider) fetchAugments(champKey int, version, k string) {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	augs, err := p.queryAugments(ctx, champKey)
-	if err == nil && len(augs) == 0 {
-		err = errors.New("no augments in the response (saved to meta/opgg_augments_last_response.txt)")
+	source := "augment page"
+	augs, err := p.augmentPage(ctx, champID)
+	if err != nil {
+		// The page has every tier in OP.GG's order; the data feed is the
+		// fallback, without the S, A and B augments.
+		p.logf("OP.GG augments: %s: %v; using the data feed", champID, err)
+		source = "data feed"
+		augs, err = p.queryAugments(ctx, champKey)
+		if err == nil && len(augs) == 0 {
+			err = errors.New("no augments in the response (saved to meta/opgg_augments_last_response.txt)")
+		}
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -246,7 +316,7 @@ func (p *Provider) fetchAugments(champKey int, version, k string) {
 		_ = os.WriteFile(path+".tmp", b, 0o644)
 		_ = os.Rename(path+".tmp", path)
 	}
-	p.logf("OP.GG augments: champion %d: %d augments", champKey, len(augs))
+	p.logf("OP.GG augments: %s: %d augments from the %s", champID, len(augs), source)
 	if p.onReady != nil {
 		go p.onReady()
 	}
@@ -296,6 +366,9 @@ func parseAugmentResult(raw json.RawMessage) ([]Augment, error) {
 	}
 	if len(augs) == 0 {
 		augs = parseAugmentText(text)
+	}
+	for i := range augs {
+		augs[i].Known = true
 	}
 	return normalizePop(augs), nil
 }
