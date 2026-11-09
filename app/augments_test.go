@@ -42,7 +42,7 @@ func TestMatchCardsWithOCRMistakes(t *testing.T) {
 		words(0.40, "Gain", "gold", "and", "stats"), // description text
 	}
 	cards := offerFrom(matchCards(lines, testAugs))
-	if got := verdicts(cards); got != "[Hand of Baron=Take King Me=Reroll Stats on Stats on Stats!=OK]" {
+	if got := verdicts(cards); got != "[Hand of Baron=Take King Me=Reroll Stats on Stats on Stats!=Skip]" {
 		t.Fatalf("got %v", got)
 	}
 }
@@ -71,7 +71,7 @@ func TestTightlySpacedTitles(t *testing.T) {
 		{ID: 4, Name: "Titan's Resolve", Known: true, Tier: 1, Rank: 13},
 	}
 	lines := []OCRLine{words(0.1, "TankEngine"), words(0.4, "TankItOr", "LeaveIt"), words(0.7, "Titan's", "Reso", "lve")}
-	if got := verdicts(RateCards(lines, augs)); got != "[Tank Engine=Take Tank It Or Leave It=Reroll Titan's Resolve=OK]" {
+	if got := verdicts(RateCards(lines, augs)); got != "[Tank Engine=Take Tank It Or Leave It=Reroll Titan's Resolve=Skip]" {
 		t.Fatalf("got %v", got)
 	}
 }
@@ -128,15 +128,20 @@ func TestRerollAndListOrder(t *testing.T) {
 		{ID: 4, Name: "Multishot", Known: true, Tier: 2, Rank: 46},
 		{ID: 5, Name: "Overloaded", Known: true, Tier: 3, Rank: 92},
 		{ID: 6, Name: "Upgrade Zhonya's", Known: true, Tier: 5, Rank: 138},
+		{ID: 7, Name: "Escape Plan", Known: true, Tier: 1, Rank: 11},
+		{ID: 8, Name: "Lonely Warrior", Known: true, Tier: 1, Rank: 26},
+		{ID: 9, Name: "Leg Day", Known: true, Tier: 1, Rank: 42},
 	}
 	cases := []struct {
 		names []string
 		want  string
 	}{
-		{[]string{"Titan's Resolve", "Goliath", "Multishot"}, "[Titan's Resolve=OK Goliath=Take Multishot=Reroll]"},
-		{[]string{"Goliath", "Armored Impact", "Titan's Resolve"}, "[Goliath=OK Armored Impact=Take Titan's Resolve=OK]"},
+		{[]string{"Titan's Resolve", "Goliath", "Multishot"}, "[Titan's Resolve=Skip Goliath=Take Multishot=Reroll]"},
+		{[]string{"Goliath", "Armored Impact", "Titan's Resolve"}, "[Goliath=Skip Armored Impact=Take Titan's Resolve=Skip]"},
 		{[]string{"Multishot", "Overloaded", "Upgrade Zhonya's"}, "[Multishot=Reroll Overloaded=Reroll Upgrade Zhonya's=Reroll]"},
 		{[]string{"Overloaded", "Titan's Resolve", "Upgrade Zhonya's"}, "[Overloaded=Reroll Titan's Resolve=Take Upgrade Zhonya's=Reroll]"},
+		// Three A cards: the bottom, the middle and the top of the A list.
+		{[]string{"Leg Day", "Lonely Warrior", "Escape Plan"}, "[Leg Day=Skip Lonely Warrior=Skip Escape Plan=Take]"},
 	}
 	for _, c := range cases {
 		var lines []OCRLine

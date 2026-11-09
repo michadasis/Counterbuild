@@ -88,7 +88,7 @@ type AugmentCard struct {
 	Rank    int    // place in the stats site's list for the champion, 1 = best; 0 if unknown
 	Top     bool   // tier unknown but somewhere in S to B (the data feed leaves those out)
 	NoData  bool   // the stats site has no data for it on this champion
-	Verdict string // "Take", "OK", "Reroll", "Even", or "?" when there are no stats
+	Verdict string // "Take", "Skip", "Reroll", "Even", or "?" when there are no stats
 }
 
 type reason struct {

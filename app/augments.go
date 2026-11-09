@@ -244,7 +244,7 @@ const rerollTier = 2
 
 // rateCards gives each card a verdict. A B tier card or worse says Reroll
 // (each card can be rerolled on its own). Of the S and A cards, the one
-// highest on OP.GG's list for the champion says Take and the others OK. With
+// highest on OP.GG's list for the champion says Take and the others Skip. With
 // only the data feed (no list), cards guessed to be S to B can't be told
 // apart, so they say Even (Take when there is one). Cards OP.GG has no data
 // for say "?".
@@ -276,7 +276,7 @@ func rateCards(cards []engine.AugmentCard) {
 		case best < 0:
 			cards[i].Verdict = "Even"
 		default:
-			cards[i].Verdict = "OK"
+			cards[i].Verdict = "Skip"
 		}
 	}
 }

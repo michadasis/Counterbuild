@@ -64,7 +64,7 @@ func TestPreview(t *testing.T) {
 	res2.BuyNow = &engine.BuyAdvice{ID: 1058, Name: "Needlessly Large Rod", Cost: 1200, Short: 300, Target: "Zhonya's Hourglass", Label: "Next"}
 	res2.Augments = []engine.AugmentCard{
 		{Name: "Tank Engine", Tier: 0, Rank: 2, Verdict: "Take"},
-		{Name: "Titan's Resolve", Tier: 1, Rank: 13, Verdict: "OK"},
+		{Name: "Titan's Resolve", Tier: 1, Rank: 13, Verdict: "Skip"},
 		{Name: "Upgrade Zhonya's", Tier: 5, Rank: 138, Verdict: "Reroll"},
 	}
 	ic := dirIcons{os.Getenv("PREVIEW_ICONS")}
