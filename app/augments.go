@@ -93,6 +93,8 @@ type cardMatch struct {
 // also match inside "Stats on Stats on Stats!". OCR mistakes of a letter or
 // two are tolerated, except in short names, which must be read exactly.
 func matchCards(lines []OCRLine, augs []meta.Augment) []cardMatch {
+	// Names are compared without spaces: the card titles are tightly spaced,
+	// so OCR can read "Tank Engine" as "TankEngine" (or split a word).
 	type nameRef struct {
 		aug   meta.Augment
 		words []string
@@ -104,7 +106,7 @@ func matchCards(lines []OCRLine, augs []meta.Augment) []cardMatch {
 		if len(w) == 0 {
 			continue
 		}
-		names = append(names, nameRef{a, w, strings.Join(w, " ")})
+		names = append(names, nameRef{a, w, strings.Join(w, "")})
 	}
 	sort.SliceStable(names, func(i, j int) bool { return len(names[i].flat) > len(names[j].flat) })
 
@@ -147,10 +149,10 @@ func matchCards(lines []OCRLine, augs []meta.Augment) []cardMatch {
 			if len(nl.words) > len(n.words)+1 {
 				continue // a sentence, not a title
 			}
-			if need == 1 && len(nl.words) != len(n.words) {
-				continue
+			if need == 1 && len(nl.words) > len(n.words) {
+				continue // short names must be the whole title
 			}
-			for k := max(1, len(n.words)-1); k <= len(n.words)+1; k++ {
+			for k := 1; k <= len(n.words)+1; k++ {
 			window:
 				for s := 0; s+k <= len(nl.words); s++ {
 					for i := s; i < s+k; i++ {
@@ -158,7 +160,7 @@ func matchCards(lines []OCRLine, augs []meta.Augment) []cardMatch {
 							continue window
 						}
 					}
-					if sim := similarity(strings.Join(nl.words[s:s+k], " "), n.flat); sim > best {
+					if sim := similarity(strings.Join(nl.words[s:s+k], ""), n.flat); sim > best {
 						best, bl, bs, bk = sim, li, s, k
 					}
 				}

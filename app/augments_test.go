@@ -61,6 +61,21 @@ func TestMergedLineAndShortNames(t *testing.T) {
 	}
 }
 
+// TestTightlySpacedTitles: the card titles are tightly spaced, so OCR can run
+// words together ("TankEngine") or break one up.
+func TestTightlySpacedTitles(t *testing.T) {
+	augs := []meta.Augment{
+		{ID: 1, Name: "Tank Engine", Known: true, Tier: 0, Rank: 2},
+		{ID: 2, Name: "Tank It Or Leave It", Known: true, Tier: 5, Rank: 178},
+		{ID: 3, Name: "Shrink Engine", Known: true, Tier: 4, Rank: 74},
+		{ID: 4, Name: "Titan's Resolve", Known: true, Tier: 1, Rank: 13},
+	}
+	lines := []OCRLine{words(0.1, "TankEngine"), words(0.4, "TankItOr", "LeaveIt"), words(0.7, "Titan's", "Reso", "lve")}
+	if got := verdicts(RateCards(lines, augs)); got != "[Tank Engine=Take Tank It Or Leave It=Reroll Titan's Resolve=OK]" {
+		t.Fatalf("got %v", got)
+	}
+}
+
 func TestNoOfferFromStrayText(t *testing.T) {
 	if cards := offerFrom(matchCards([]OCRLine{words(0.3, "King", "Me")}, testAugs)); cards != nil {
 		t.Fatalf("one name is not an offer: %+v", cards)
