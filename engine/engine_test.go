@@ -477,16 +477,15 @@ func TestMetaFollowsBuildOrder(t *testing.T) {
 	if r.Picks[0].Reasons[0] != "OP.GG core (53% WR)" {
 		t.Fatalf("expected the OP.GG reason first, got %v", r.Picks[0].Reasons)
 	}
-	// Circlet done (as Diadem of Songs): Warmog's next.
+	// Circlet done (as Diadem of Songs): Warmog's next, then one of OP.GG's
+	// 4th item options, and only then an item outside OP.GG's builds.
 	r = c.Recommend(sorakaGame(c, []int{6617, 2530, 3158}), Options{Meta: sorakaARAM})
 	dump(t, "soraka after diadem", r)
 	if r.Picks[0].Name != "Warmog's Armor" {
 		t.Fatalf("expected Warmog's after Diadem of Songs, got %v", pickNames(r))
 	}
-	for _, p := range r.Picks[:2] {
-		if p.Name == "Redemption" {
-			t.Fatalf("Redemption suggested too early: %v", pickNames(r))
-		}
+	if n := r.Picks[1].Name; n != "Redemption" && n != "Spirit Visage" {
+		t.Fatalf("expected a 4th item option second, got %v", pickNames(r))
 	}
 	// The core build done: now the 4th/5th item options come up.
 	r = c.Recommend(sorakaGame(c, []int{6617, 2530, 3083, 3158}), Options{Meta: sorakaARAM})
@@ -582,5 +581,32 @@ func TestComponentDoesNotBlockItsItem(t *testing.T) {
 	r = c.Recommend(sorakaGame(c, []int{6617, 3158, 3004}), Options{Meta: sorakaARAM, MaxItems: 40})
 	if hasPick(r, "Whispering Circlet") {
 		t.Fatalf("Manamune and Whispering Circlet share Manaflow, got %v", pickNames(r))
+	}
+}
+
+func TestMetaItemsComeFirst(t *testing.T) {
+	c := testCatalog(t)
+	r := c.Recommend(sorakaGame(c, []int{6617, 3158, 3070}), Options{Meta: sorakaARAM})
+	dump(t, "soraka meta first", r)
+	if len(r.Picks) != 3 {
+		t.Fatalf("got %v", pickNames(r))
+	}
+	// Mikael's Blessing scores higher than Warmog's on its own, but isn't in
+	// OP.GG's builds for Soraka: it may only take the last line.
+	for i, p := range r.Picks {
+		off := strings.HasPrefix(p.Reasons[0], "off-meta")
+		if i < 2 && off || i == 2 && !off {
+			t.Fatalf("OP.GG items first, one off-meta item last; got %v %v", pickNames(r), p.Reasons)
+		}
+	}
+	if r.Picks[0].Name != "Whispering Circlet" || r.Picks[1].Name != "Warmog's Armor" {
+		t.Fatalf("expected OP.GG's next items, got %v", pickNames(r))
+	}
+	// Without OP.GG data there are no meta items, so nothing is held back.
+	plain := c.Recommend(sorakaGame(c, []int{6617, 3158, 3070}), Options{})
+	for _, p := range plain.Picks {
+		if strings.HasPrefix(p.Reasons[0], "off-meta") {
+			t.Fatalf("no OP.GG data, nothing is off-meta: %v", p.Reasons)
+		}
 	}
 }

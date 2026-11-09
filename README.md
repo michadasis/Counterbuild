@@ -50,7 +50,7 @@ The panel is click-through and never takes focus, so it cannot get in the way of
 - **Header**: your gold, champion, detected build style and level.
 - **Enemy damage**: how much of the damage coming at you is physical (red) vs magic (blue), weighted by threat.
 - **Enemy icons**: sorted by threat. A gold border and dot mean that enemy is fed. Border color shows their damage type.
-- **Build next**: the 3 best items right now with the reasons. The price is what you still have to pay given the components you own, and it turns teal when you can afford it. "OP.GG core (52% WR)" means the item is part of the most-built core build, with its win rate; "OP.GG item 4" means players usually build it as their 4th item. "off-meta" means the pick is outside OP.GG's builds for your champion and is there because of this game (for example anti-heal against heavy healing). "with OP.GG stats" appears next to the title once that data has loaded.
+- **Build next**: the 3 best items right now with the reasons. The price is what you still have to pay given the components you own, and it turns teal when you can afford it. "OP.GG core (52% WR)" means the item is part of the most-built core build, with its win rate; "OP.GG item 4" means players usually build it as their 4th item. Items from OP.GG's builds always come first; the last line is kept for the best item outside them, marked "off-meta", as an afterthought (often a counter for this game, like anti-heal against heavy healing). "with OP.GG stats" appears next to the title once that data has loaded.
 - **Boots**: shown when you have no upgraded boots yet.
 - **Buy now / Next component**: what to buy at your next back.
 - **Anti-heal now / Cleanse now**: a cheap counter when the enemy team calls for it.
@@ -98,7 +98,7 @@ Only your champion, role and game mode (for example "Ahri, mid, ranked"), once p
 
 ## How it decides, and its limits
 
-Your build follows the order players most often build on your champion and role (from OP.GG): with one item done it suggests what they build second, and a usual 5th item waits until you are there. Among OP.GG's options for that slot it picks the one that suits this game. On top of that it reacts to the game in front of you: who is fed, what they built, how much they heal or shield, how tanky they are, and what you can afford, and urgent counters can outrank the usual core.
+Your build follows the order players most often build on your champion and role (from OP.GG): with one item done it suggests what they build second, and a usual 5th item waits until you are there. Among OP.GG's options it picks the ones that suit this game, reacting to the game in front of you: who is fed, what they built, how much they heal or shield, how tanky they are, and what you can afford. Items outside OP.GG's builds only get the last line, and urgent cheap counters still show in their own box.
 
 If OP.GG data is unavailable, first and core items come from your champion's class and build style, so for champions with unusual builds, pin a `core` or just play a few games and let it learn. Brand new champions fall back to their class defaults until their traits are added. Arena and Swarm are not supported.
 

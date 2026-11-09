@@ -867,29 +867,45 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 	}
 	s.metaFloor(all)
 	s.pinCore(all)
+	// OP.GG's builds come first: the items you pinned, then OP.GG's items for
+	// the champion, ranked by build order and against this enemy team; items
+	// outside OP.GG's builds only after them.
+	group := func(sc scored) int {
+		switch {
+		case s.core[sc.it.ID]:
+			return 0
+		case s.offMeta(sc.it.ID):
+			return 2
+		}
+		return 1
+	}
 	sort.SliceStable(all, func(i, j int) bool {
+		if gi, gj := group(all[i]), group(all[j]); gi != gj {
+			return gi < gj
+		}
 		if all[i].score == all[j].score {
 			return all[i].it.ID < all[j].it.ID
 		}
 		return all[i].score > all[j].score
 	})
+	// With OP.GG's build order, the last line is kept for the best item outside
+	// it: shown, as an afterthought (often a counter for this enemy team).
+	metaLines := opt.MaxItems
+	if s.meta != nil && len(s.meta.Slot) > 0 && opt.MaxItems >= 2 {
+		metaLines = opt.MaxItems - 1
+	}
 	pickedGroups := map[string]bool{}
-	for _, sc := range all {
-		if len(res.Picks) >= opt.MaxItems {
-			break
-		}
-		clash := false
+	picked := map[int]bool{}
+	add := func(sc scored) bool {
 		for _, gname := range uniqueGroups(sc.it) {
 			if pickedGroups[gname] {
-				clash = true
+				return false
 			}
-		}
-		if clash {
-			continue
 		}
 		for _, gname := range uniqueGroups(sc.it) {
 			pickedGroups[gname] = true
 		}
+		picked[sc.it.ID] = true
 		reasons := topReasons(sc.reasons, arch)
 		if s.offMeta(sc.it.ID) && len(reasons) > 0 {
 			reasons[0] = "off-meta: " + reasons[0]
@@ -897,6 +913,29 @@ func (c *Catalog) Recommend(g *LiveGame, opt Options) *Result {
 		res.Picks = append(res.Picks, Pick{ID: sc.it.ID, Name: sc.it.Name, Cost: sc.it.Cost,
 			Remaining: c.RemainingCost(sc.it.ID, owned), Value: sc.value, Score: sc.score,
 			Reasons: reasons})
+		return true
+	}
+	inBuilds := 0
+	for _, sc := range all {
+		if len(res.Picks) >= opt.MaxItems {
+			break
+		}
+		off := group(sc) == 2
+		if !off && inBuilds >= metaLines {
+			continue
+		}
+		if add(sc) && !off {
+			inBuilds++
+		}
+	}
+	// No item outside OP.GG's builds fit: the line goes to the next OP.GG item.
+	for _, sc := range all {
+		if len(res.Picks) >= opt.MaxItems {
+			break
+		}
+		if !picked[sc.it.ID] {
+			add(sc)
+		}
 	}
 
 	// Boots.
