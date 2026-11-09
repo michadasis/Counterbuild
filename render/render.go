@@ -142,9 +142,16 @@ func (r *Renderer) face(w int, px float64) font.Face {
 	if err != nil {
 		return nil
 	}
-	r.faces[k] = f
-	return f
+	r.faces[k] = noKern{f}
+	return r.faces[k]
 }
+
+// noKern draws without pair kerning. The font library applies kerning on top
+// of advances already rounded to whole pixels, so pairs like "Ta" and "Lv"
+// ended up overlapping.
+type noKern struct{ font.Face }
+
+func (noKern) Kern(r0, r1 rune) fixed.Int26_6 { return 0 }
 
 // canvas wraps an image with scale-aware drawing helpers.
 type canvas struct {
